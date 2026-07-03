@@ -1,4 +1,4 @@
-export default function AdminPanel() { return <div style={{color:'white',padding:'2rem'}}>Adminimport { useState, useEffect, useContext } from 'react'
+import { useState, useEffect, useContext } from 'react'
 import { motion } from 'framer-motion'
 import { paymentsAPI } from '../../services/api'
 import { AuthContext } from '../../context/AuthContext'
@@ -407,4 +407,4 @@ export default function AdminPanel() {
       </div>
     </div>
   )
-}Panel</div> }
+}
