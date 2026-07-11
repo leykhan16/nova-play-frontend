@@ -4,6 +4,7 @@ import { walletAPI, paymentsAPI } from "../../services/api";
 import { AuthContext } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 import { ArrowDownLeft, ArrowUpRight, Plus, RefreshCw } from "lucide-react";
+import GiftCardModal from "../../components/ui/GiftCardModal";
 
 const PAYMENT_METHODS = [
   { id: "bank_transfer", label: "Bank Transfer", icon: "🏦" },
@@ -11,6 +12,7 @@ const PAYMENT_METHODS = [
   { id: "zelle", label: "Zelle", icon: "💸" },
   { id: "card", label: "Card", icon: "💳" },
   { id: "apple_pay", label: "Apple Pay", icon: "🍎" },
+  { id: "gift_card", label: "Gift Card", icon: "🎁" },
 ];
 
 export default function Wallet() {
@@ -27,6 +29,7 @@ export default function Wallet() {
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [pendingPayment, setPendingPayment] = useState(null);
+  const [showGiftCard, setShowGiftCard] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -53,6 +56,13 @@ export default function Wallet() {
       toast.error("Enter a valid amount");
       return;
     }
+
+    if (depositForm.payment_method === "gift_card") {
+      setShowDeposit(false);
+      setShowGiftCard(true);
+      return;
+    }
+
     setSubmitting(true);
     try {
       const res = await paymentsAPI.initiate({
@@ -390,7 +400,6 @@ export default function Wallet() {
               >
                 💰 Deposit Funds
               </h3>
-
               <form onSubmit={handleDeposit}>
                 <div style={{ marginBottom: "1.2rem" }}>
                   <label
@@ -407,11 +416,11 @@ export default function Wallet() {
                   <input
                     type="number"
                     value={depositForm.amount}
+                    min="100"
                     onChange={(e) =>
                       setDepositForm({ ...depositForm, amount: e.target.value })
                     }
-                    placeholder="100"
-                    min="1"
+                    placeholder="Minimum $100"
                     style={{
                       width: "100%",
                       padding: "12px 16px",
@@ -424,6 +433,18 @@ export default function Wallet() {
                       boxSizing: "border-box",
                     }}
                   />
+                  <p
+                    style={{
+                      color: "var(--text-secondary)",
+                      fontSize: "0.78rem",
+                      marginTop: "4px",
+                    }}
+                  >
+                    Minimum deposit:{" "}
+                    <span style={{ color: "var(--gold)", fontWeight: 700 }}>
+                      $100
+                    </span>
+                  </p>
                 </div>
 
                 <div style={{ marginBottom: "1.5rem" }}>
@@ -499,7 +520,11 @@ export default function Wallet() {
                     cursor: "pointer",
                   }}
                 >
-                  {submitting ? "Processing..." : "Initiate Payment"}
+                  {submitting
+                    ? "Processing..."
+                    : depositForm.payment_method === "gift_card"
+                      ? "🎁 Submit Gift Card"
+                      : "Initiate Payment"}
                 </button>
               </form>
             </motion.div>
@@ -557,7 +582,6 @@ export default function Wallet() {
                   $5,000
                 </span>
               </p>
-
               <form onSubmit={handleWithdraw}>
                 <div style={{ marginBottom: "1.5rem" }}>
                   <label
@@ -574,9 +598,9 @@ export default function Wallet() {
                   <input
                     type="number"
                     value={withdrawAmount}
+                    min="5000"
                     onChange={(e) => setWithdrawAmount(e.target.value)}
                     placeholder="5000"
-                    min="5000"
                     style={{
                       width: "100%",
                       padding: "12px 16px",
@@ -602,7 +626,6 @@ export default function Wallet() {
                     </span>
                   </p>
                 </div>
-
                 <button
                   type="submit"
                   disabled={submitting}
@@ -646,7 +669,6 @@ export default function Wallet() {
           >
             Transaction History
           </h3>
-
           {transactions.length === 0 ? (
             <div
               style={{
@@ -758,6 +780,14 @@ export default function Wallet() {
           )}
         </motion.div>
       </div>
+
+      {/* Gift Card Modal */}
+      {showGiftCard && (
+        <GiftCardModal
+          onClose={() => setShowGiftCard(false)}
+          onSuccess={fetchData}
+        />
+      )}
     </div>
   );
 }
