@@ -30,6 +30,7 @@ export default function Wallet() {
   const [submitting, setSubmitting] = useState(false);
   const [pendingPayment, setPendingPayment] = useState(null);
   const [showGiftCard, setShowGiftCard] = useState(false);
+  const [bankDetails, setBankDetails] = useState({});
 
   const fetchData = async () => {
     try {
@@ -106,6 +107,7 @@ export default function Wallet() {
       await walletAPI.withdraw({
         amount: parseFloat(withdrawAmount),
         currency: "USD",
+        bankDetails,
       });
       toast.success(`Withdrawal of $${withdrawAmount} processed!`);
       setShowWithdraw(false);
@@ -557,7 +559,9 @@ export default function Wallet() {
                 borderRadius: "20px",
                 padding: "2rem",
                 width: "100%",
-                maxWidth: "420px",
+                maxWidth: "480px",
+                maxHeight: "90vh",
+                overflowY: "auto",
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -577,13 +581,16 @@ export default function Wallet() {
                   marginBottom: "1.5rem",
                 }}
               >
-                Minimum withdrawal:{" "}
+                Minimum:{" "}
                 <span style={{ color: "var(--gold)", fontWeight: 700 }}>
                   $5,000
-                </span>
+                </span>{" "}
+                · Processed within 24-48 hours
               </p>
+
               <form onSubmit={handleWithdraw}>
-                <div style={{ marginBottom: "1.5rem" }}>
+                {/* Amount */}
+                <div style={{ marginBottom: "1.2rem" }}>
                   <label
                     style={{
                       display: "block",
@@ -617,7 +624,7 @@ export default function Wallet() {
                     style={{
                       color: "var(--text-secondary)",
                       fontSize: "0.8rem",
-                      marginTop: "6px",
+                      marginTop: "4px",
                     }}
                   >
                     Available:{" "}
@@ -626,6 +633,108 @@ export default function Wallet() {
                     </span>
                   </p>
                 </div>
+
+                {/* Bank details section */}
+                <div
+                  style={{
+                    background: "rgba(0,212,255,0.05)",
+                    border: "1px solid rgba(0,212,255,0.2)",
+                    borderRadius: "12px",
+                    padding: "1.2rem",
+                    marginBottom: "1.5rem",
+                  }}
+                >
+                  <p
+                    style={{
+                      color: "#00d4ff",
+                      fontWeight: 700,
+                      fontSize: "0.9rem",
+                      marginBottom: "1rem",
+                    }}
+                  >
+                    🏦 Bank Transfer Details
+                  </p>
+
+                  {[
+                    {
+                      key: "account_name",
+                      label: "Account Name",
+                      placeholder: "Full name on account",
+                    },
+                    {
+                      key: "bank_name",
+                      label: "Bank Name",
+                      placeholder: "e.g. Chase, Bank of America",
+                    },
+                    {
+                      key: "account_number",
+                      label: "Account Number",
+                      placeholder: "Your account number",
+                    },
+                    {
+                      key: "routing_number",
+                      label: "Routing Number",
+                      placeholder: "ABA routing number (US)",
+                    },
+                    {
+                      key: "swift_code",
+                      label: "SWIFT/BIC Code",
+                      placeholder: "For international transfers",
+                    },
+                  ].map((field) => (
+                    <div key={field.key} style={{ marginBottom: "1rem" }}>
+                      <label
+                        style={{
+                          display: "block",
+                          color: "var(--text-secondary)",
+                          fontSize: "0.82rem",
+                          marginBottom: "5px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {field.label}
+                      </label>
+                      <input
+                        type="text"
+                        value={bankDetails?.[field.key] || ""}
+                        onChange={(e) =>
+                          setBankDetails((prev) => ({
+                            ...prev,
+                            [field.key]: e.target.value,
+                          }))
+                        }
+                        placeholder={field.placeholder}
+                        style={{
+                          width: "100%",
+                          padding: "10px 14px",
+                          background: "var(--navy)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "8px",
+                          color: "var(--text-primary)",
+                          fontSize: "0.9rem",
+                          outline: "none",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    background: "rgba(255,68,68,0.08)",
+                    border: "1px solid rgba(255,68,68,0.2)",
+                    borderRadius: "8px",
+                    padding: "10px 14px",
+                    marginBottom: "1.2rem",
+                    fontSize: "0.82rem",
+                    color: "#ff8888",
+                  }}
+                >
+                  ⚠️ Please double-check your bank details. Nova Play is not
+                  responsible for transfers to incorrect accounts.
+                </div>
+
                 <button
                   type="submit"
                   disabled={submitting}
@@ -641,13 +750,12 @@ export default function Wallet() {
                     cursor: "pointer",
                   }}
                 >
-                  {submitting ? "Processing..." : "Withdraw"}
+                  {submitting ? "Processing..." : "Submit Withdrawal"}
                 </button>
               </form>
             </motion.div>
           </motion.div>
         )}
-
         {/* Transaction history */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

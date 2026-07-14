@@ -35,6 +35,20 @@ export default function Navbar() {
         justifyContent: "space-between",
       }}
     >
+      <Link
+        to="/support"
+        style={{
+          color: "var(--text-secondary)",
+          textDecoration: "none",
+          fontSize: "0.9rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+        }}
+      >
+        Support
+      </Link>
+
       <Link to="/lobby" style={{ textDecoration: "none" }}>
         <span
           style={{

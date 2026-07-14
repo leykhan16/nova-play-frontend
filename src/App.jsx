@@ -14,6 +14,7 @@ import Blackjack from "./pages/games/Blackjack";
 import Plinko from "./pages/games/Plinko";
 import AdminPanel from "./pages/admin/AdminPanel";
 import Layout from "./components/layout/Layout";
+import Support from "./pages/Support";
 
 const PrivateRoute = ({ children }) => {
   const { user, loading } = useContext(AuthContext);
@@ -39,6 +40,14 @@ export default function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/verify-otp" element={<VerifyOTP />} />
       <Route path="/register-admin" element={<RegisterAdmin />} />
+      <Route
+        path="/support"
+        element={
+          <Layout>
+            <Support />
+          </Layout>
+        }
+      />
 
       <Route
         path="/lobby"
