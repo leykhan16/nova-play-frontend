@@ -26,11 +26,44 @@ export default function AdminPanel() {
   const [notifications, setNotifications] = useState([]);
   const [inviteCode, setInviteCode] = useState(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
+  const [tickets, setTickets] = useState([]);
+  const [activeTab, setActiveTab] = useState("payments"); // 'payments' | 'tickets'
+  const [ticketFilter, setTicketFilter] = useState("open");
 
+  const fetchTickets = async () => {
+    try {
+      const res = await api.get("/support");
+      setTickets(res.data.data);
+    } catch {}
+  };
   useEffect(() => {
     fetchPayments();
+    fetchTickets();
+
     const socket = connectSocket();
     socket.emit("join_admin_room", { role: user.role });
+
+    // Support ticket listener
+    socket.on("new_support_ticket", (data) => {
+      setTickets((prev) => [data, ...prev]);
+      toast.custom(
+        () => (
+          <div
+            style={{
+              background: "#12122a",
+              border: "1px solid #c084fc",
+              borderRadius: "12px",
+              padding: "1rem",
+            }}
+          >
+            <span style={{ color: "#c084fc", fontWeight: 700 }}>
+              New Support Ticket
+            </span>
+          </div>
+        ),
+        { duration: 6000 },
+      );
+    });
 
     socket.on("payment_initiated", (data) => {
       toast.custom(
@@ -141,12 +174,80 @@ export default function AdminPanel() {
       fetchPayments();
     });
 
+    socket.on("jackpot_won", (data) => {
+      toast.custom(
+        () => (
+          <div
+            style={{
+              background: "#12122a",
+              border: "2px solid #c084fc",
+              borderRadius: "12px",
+              padding: "1rem",
+              maxWidth: "320px",
+              boxShadow: "0 0 20px rgba(192,132,252,0.5)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                marginBottom: "6px",
+              }}
+            >
+              <span style={{ fontSize: "1.2rem" }}>🏆</span>
+              <span style={{ color: "#c084fc", fontWeight: 900 }}>
+                JACKPOT WON!
+              </span>
+            </div>
+
+            <p style={{ color: "#fff", fontWeight: 700, marginBottom: "2px" }}>
+              {data.username}
+            </p>
+
+            <p
+              style={{
+                color: "#00ff88",
+                fontWeight: 700,
+                fontSize: "0.9rem",
+              }}
+            >
+              {data.prize}
+            </p>
+
+            <p style={{ color: "#a0a0c0", fontSize: "0.8rem" }}>
+              via {data.game}
+            </p>
+          </div>
+        ),
+        { duration: 10000 },
+      );
+
+      setNotifications((prev) =>
+        [
+          {
+            id: Date.now(),
+            type: "jackpot",
+            title: "JACKPOT!",
+            message: `${data.username} won ${data.prize} on ${data.game}`,
+            time: new Date().toISOString(),
+            color: "#c084fc",
+            emoji: "🏆",
+          },
+          ...prev,
+        ].slice(0, 20),
+      );
+    });
+
     return () => {
+      socket.off("new_support_ticket");
       socket.off("payment_initiated");
       socket.off("payment_confirming");
       socket.off("gift_card_submitted");
+      socket.off("jackpot_won");
+      socket.disconnect();
     };
-  }, []);
+  }, [user]);
 
   const fetchPayments = async () => {
     try {
@@ -489,6 +590,349 @@ export default function AdminPanel() {
               </button>
             )}
           </motion.div>
+        )}
+
+        {/* Tab switcher */}
+        <div style={{ display: "flex", gap: "8px", marginBottom: "1.5rem" }}>
+          {[
+            { key: "payments", label: "💰 Payments", count: payments.length },
+            {
+              key: "tickets",
+              label: "🎫 Support",
+              count: tickets.filter((t) => t.status === "open").length,
+            },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                padding: "10px 20px",
+                borderRadius: "10px",
+                cursor: "pointer",
+                fontWeight: 700,
+                background:
+                  activeTab === tab.key ? "var(--gold)" : "var(--card)",
+                color: activeTab === tab.key ? "#000" : "var(--text-secondary)",
+                border:
+                  activeTab === tab.key ? "none" : "1px solid var(--border)",
+                fontSize: "0.9rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              {tab.label}
+              {tab.count > 0 && (
+                <span
+                  style={{
+                    background:
+                      activeTab === tab.key ? "rgba(0,0,0,0.2)" : "var(--gold)",
+                    color: activeTab === tab.key ? "#000" : "#000",
+                    borderRadius: "50px",
+                    padding: "1px 8px",
+                    fontSize: "0.75rem",
+                    fontWeight: 800,
+                  }}
+                >
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Tickets panel */}
+        {activeTab === "tickets" && (
+          <div
+            style={{
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: "20px",
+              padding: "1.5rem",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "1.5rem",
+                flexWrap: "wrap",
+                gap: "8px",
+              }}
+            >
+              <h3 style={{ fontWeight: 800, fontSize: "1.1rem" }}>
+                Support Tickets
+              </h3>
+              <div style={{ display: "flex", gap: "6px" }}>
+                {["open", "in_progress", "resolved", "all"].map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setTicketFilter(f)}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      background:
+                        ticketFilter === f
+                          ? "rgba(240,192,64,0.2)"
+                          : "var(--navy)",
+                      border:
+                        ticketFilter === f
+                          ? "1px solid var(--gold)"
+                          : "1px solid var(--border)",
+                      color:
+                        ticketFilter === f
+                          ? "var(--gold)"
+                          : "var(--text-secondary)",
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {f.replace("_", " ")}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {tickets.filter(
+              (t) => ticketFilter === "all" || t.status === ticketFilter,
+            ).length === 0 ? (
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "3rem",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>
+                  🎫
+                </div>
+                No {ticketFilter} tickets
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "1rem",
+                }}
+              >
+                {tickets
+                  .filter(
+                    (t) => ticketFilter === "all" || t.status === ticketFilter,
+                  )
+                  .map((ticket) => {
+                    const statusColors = {
+                      open: "#ff4444",
+                      in_progress: "#f0c040",
+                      resolved: "#00ff88",
+                      closed: "#666",
+                    };
+                    const catIcons = {
+                      failed_transaction: "❌",
+                      pending_payment: "⏳",
+                      withdrawal: "💸",
+                      prize: "🎁",
+                      account: "👤",
+                      other: "💬",
+                    };
+
+                    return (
+                      <div
+                        key={ticket.id}
+                        style={{
+                          background: "var(--navy)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "14px",
+                          padding: "1.5rem",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            marginBottom: "1rem",
+                            flexWrap: "wrap",
+                            gap: "8px",
+                          }}
+                        >
+                          <div>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              <span>{catIcons[ticket.category] || "💬"}</span>
+                              <span style={{ fontWeight: 700 }}>
+                                {ticket.name}
+                              </span>
+                              <span
+                                style={{
+                                  color: "var(--text-secondary)",
+                                  fontSize: "0.85rem",
+                                }}
+                              >
+                                {ticket.email}
+                              </span>
+                            </div>
+                            <p
+                              style={{
+                                color: "var(--gold)",
+                                fontWeight: 600,
+                                margin: "0 0 4px",
+                              }}
+                            >
+                              {ticket.subject}
+                            </p>
+                            {ticket.payment_reference && (
+                              <p
+                                style={{
+                                  color: "var(--text-secondary)",
+                                  fontSize: "0.8rem",
+                                  margin: 0,
+                                }}
+                              >
+                                Ref:{" "}
+                                <span
+                                  style={{
+                                    color: "#00d4ff",
+                                    fontFamily: "monospace",
+                                  }}
+                                >
+                                  {ticket.payment_reference}
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <span
+                              style={{
+                                background: statusColors[ticket.status] + "15",
+                                color: statusColors[ticket.status],
+                                padding: "4px 10px",
+                                borderRadius: "50px",
+                                fontSize: "0.75rem",
+                                fontWeight: 700,
+                                display: "block",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              {ticket.status.replace("_", " ").toUpperCase()}
+                            </span>
+                            <span
+                              style={{
+                                color: "var(--text-secondary)",
+                                fontSize: "0.75rem",
+                              }}
+                            >
+                              {new Date(ticket.created_at).toLocaleDateString(
+                                "en-US",
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                },
+                              )}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Message */}
+                        <div
+                          style={{
+                            background: "var(--card)",
+                            borderRadius: "8px",
+                            padding: "12px",
+                            marginBottom: "1rem",
+                            color: "var(--text-secondary)",
+                            fontSize: "0.88rem",
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          {ticket.message}
+                        </div>
+
+                        {/* Status update */}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "8px",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {["in_progress", "resolved", "closed"].map((s) => (
+                            <button
+                              key={s}
+                              onClick={async () => {
+                                try {
+                                  await api.patch(`/support/${ticket.id}`, {
+                                    status: s,
+                                  });
+                                  toast.success(
+                                    `Ticket marked as ${s.replace("_", " ")}`,
+                                  );
+                                  fetchTickets();
+                                } catch {
+                                  toast.error("Could not update ticket");
+                                }
+                              }}
+                              disabled={ticket.status === s}
+                              style={{
+                                padding: "7px 14px",
+                                borderRadius: "8px",
+                                cursor:
+                                  ticket.status === s ? "default" : "pointer",
+                                background:
+                                  ticket.status === s
+                                    ? "rgba(255,255,255,0.05)"
+                                    : statusColors[s] + "15",
+                                border: `1px solid ${ticket.status === s ? "var(--border)" : statusColors[s] + "40"}`,
+                                color:
+                                  ticket.status === s
+                                    ? "var(--text-secondary)"
+                                    : statusColors[s],
+                                fontSize: "0.8rem",
+                                fontWeight: 600,
+                                textTransform: "capitalize",
+                              }}
+                            >
+                              {s.replace("_", " ")}
+                            </button>
+                          ))}
+
+                          {/* Reply via email */}
+                          <a
+                            href={`mailto:${ticket.email}?subject=Re: ${encodeURIComponent(ticket.subject)} [#${ticket.id.slice(0, 8).toUpperCase()}]`}
+                            style={{
+                              padding: "7px 14px",
+                              borderRadius: "8px",
+                              background: "rgba(0,212,255,0.1)",
+                              border: "1px solid rgba(0,212,255,0.3)",
+                              color: "#00d4ff",
+                              fontSize: "0.8rem",
+                              fontWeight: 600,
+                              textDecoration: "none",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            📧 Reply via Email
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Payments list */}
