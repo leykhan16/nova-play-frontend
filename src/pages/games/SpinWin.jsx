@@ -5,158 +5,291 @@ import toast from "react-hot-toast";
 import { ArrowRight, RotateCcw, Gift } from "lucide-react";
 import PrizeShuffle from "../../components/ui/PrizeShuffle";
 
-// 16 segments: 8 loss, 2 prize, 3×$1K, 2×$10K, 1×$50K
+// ── 16 SEGMENTS: 8 loss · 3×$1K · 2×$10K · 1×$50K · 2×prize ────────────────
 const SEGMENTS = [
   { label: "?", color: "#cc2222", tier: "loss" },
-  { label: "$1,000", color: "#00ff88", tier: "1000" },
+  { label: "$1K", color: "#00ff88", tier: "1000" },
   { label: "?", color: "#cc2222", tier: "loss" },
-  { label: "🎁", color: "#c084fc", tier: "prize" },
+  { label: "PRIZE", color: "#c084fc", tier: "prize" },
   { label: "?", color: "#cc2222", tier: "loss" },
-  { label: "$10,000", color: "#00d4ff", tier: "10000" },
+  { label: "$10K", color: "#00d4ff", tier: "10000" },
   { label: "?", color: "#cc2222", tier: "loss" },
-  { label: "$50,000", color: "#f0c040", tier: "50000" },
+  { label: "$50K", color: "#f0c040", tier: "50000" },
   { label: "?", color: "#cc2222", tier: "loss" },
-  { label: "$1,000", color: "#00ff88", tier: "1000" },
+  { label: "$1K", color: "#00ff88", tier: "1000" },
   { label: "?", color: "#cc2222", tier: "loss" },
-  { label: "🎁", color: "#c084fc", tier: "prize" },
+  { label: "PRIZE", color: "#c084fc", tier: "prize" },
   { label: "?", color: "#cc2222", tier: "loss" },
-  { label: "$10,000", color: "#00d4ff", tier: "10000" },
+  { label: "$10K", color: "#00d4ff", tier: "10000" },
   { label: "?", color: "#cc2222", tier: "loss" },
-  { label: "$1,000", color: "#00ff88", tier: "1000" },
+  { label: "$1K", color: "#00ff88", tier: "1000" },
 ];
 
-const N = SEGMENTS.length;
-const SEG_DEG = 360 / N;
+const N = SEGMENTS.length; // 16
+const SEG_DEG = 360 / N; // 22.5°
 
 const PRIZE_ODDS = [
   { label: "? Loss", color: "#ff4444", chance: "60%" },
-  { label: "🎁 Physical Prize", color: "#c084fc", chance: "10%" },
+  { label: "PRIZE", color: "#c084fc", chance: "10%" },
   { label: "$1,000", color: "#00ff88", chance: "10%" },
   { label: "$10,000", color: "#00d4ff", chance: "7%" },
-  { label: "$50,000", color: "#f0c040", chance: "6%" },
+  { label: "$50,000", color: "#f0c040", chance: "13%" },
 ];
 
-const PREVIEW_PRIZES = [
+const PREVIEW = [
   {
     name: "Lamborghini Urus",
-    value: "$250,000",
+    value: "$250K",
     image:
-      "https://images.unsplash.com/photo-1621135802920-133df287f89c?w=600&q=80",
-    category: "Luxury Car",
+      "https://images.unsplash.com/photo-1621135802920-133df287f89c?w=400&q=80",
   },
   {
     name: "Manhattan Penthouse",
-    value: "$2,000,000",
+    value: "$2M",
     image:
-      "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=600&q=80",
-    category: "Real Estate",
+      "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=400&q=80",
   },
   {
     name: "Maldives 7 Nights",
-    value: "$25,000",
+    value: "$25K",
     image:
-      "https://images.unsplash.com/photo-1514282401047-d79a71a590e8?w=600&q=80",
-    category: "Vacation",
+      "https://images.unsplash.com/photo-1514282401047-d79a71a590e8?w=400&q=80",
   },
   {
     name: "Rolex Submariner",
-    value: "$40,000",
+    value: "$40K",
     image:
-      "https://images.unsplash.com/photo-1547996160-81dfa63595aa?w=600&q=80",
-    category: "Luxury Watch",
+      "https://images.unsplash.com/photo-1547996160-81dfa63595aa?w=400&q=80",
   },
   {
     name: "Paris Luxury Trip",
-    value: "$15,000",
+    value: "$15K",
     image:
-      "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=600&q=80",
-    category: "Vacation",
+      "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&q=80",
   },
   {
     name: "Patek Philippe",
-    value: "$80,000",
+    value: "$80K",
     image:
-      "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=600&q=80",
-    category: "Luxury Watch",
+      "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=400&q=80",
   },
 ];
 
-// ── Canvas wheel renderer ──────────────────────────────────────────────────
-const renderWheel = (canvas) => {
+// ── WHEEL CANVAS RENDERER ─────────────────────────────────────────────────────
+function drawWheel(canvas) {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
-  const R = cx - 5;
-  const rad = (d) => (d * Math.PI) / 180;
+  const W = canvas.width;
+  const H = canvas.height;
+  const cx = W / 2;
+  const cy = H / 2;
+  const R = cx - 4;
+  const toRad = (d) => (d * Math.PI) / 180;
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, W, H);
 
-  SEGMENTS.forEach((seg, i) => {
-    const s = rad(i * SEG_DEG - 90);
-    const e = rad((i + 1) * SEG_DEG - 90);
-    const mid = rad(i * SEG_DEG + SEG_DEG / 2 - 90);
-    const isL = seg.tier === "loss";
+  for (let i = 0; i < N; i++) {
+    const seg = SEGMENTS[i];
+    const startRad = toRad(i * SEG_DEG - 90);
+    const endRad = toRad((i + 1) * SEG_DEG - 90);
+    const midRad = toRad(i * SEG_DEG + SEG_DEG / 2 - 90);
+    const isLoss = seg.tier === "loss";
 
-    // Fill
+    // ── Segment background ──
     ctx.beginPath();
     ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, R, s, e);
+    ctx.arc(cx, cy, R, startRad, endRad);
     ctx.closePath();
-    ctx.fillStyle = isL
+    ctx.fillStyle = isLoss
       ? i % 2 === 0
-        ? "#1c0404"
-        : "#220606"
-      : seg.color + "1c";
+        ? "#200404"
+        : "#280606"
+      : seg.color + "20";
     ctx.fill();
     ctx.strokeStyle = seg.color;
-    ctx.lineWidth = isL ? 0.8 : 2.2;
+    ctx.lineWidth = isLoss ? 0.6 : 1.8;
     ctx.stroke();
 
-    // Label
-    // Label
-    const lr = R * 0.67;
-    const lx = cx + lr * Math.cos(mid);
-    const ly = cy + lr * Math.sin(mid);
+    // ── Label ──
+    const labelR = R * 0.68;
+    const lx = cx + labelR * Math.cos(midRad);
+    const ly = cy + labelR * Math.sin(midRad);
 
     ctx.save();
     ctx.translate(lx, ly);
-    ctx.rotate(mid + Math.PI / 2);
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 18px sans-serif";
+    ctx.rotate(midRad + Math.PI / 2); // rotate text to face outward
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    // TEMP: Show only the segment index
-    ctx.fillText(String(i), 0, 0);
+    if (isLoss) {
+      ctx.font = "bold 18px Arial, sans-serif";
+      ctx.fillStyle = "#ff4444";
+      ctx.fillText("?", 0, 0);
+    } else if (seg.tier === "prize") {
+      ctx.font = "bold 9px Arial, sans-serif";
+      ctx.fillStyle = "#c084fc";
+      ctx.fillText("PRIZE", 0, 0);
+    } else {
+      // e.g. "$1K", "$10K", "$50K"
+      ctx.font = "bold 9px Arial, sans-serif";
+      ctx.fillStyle = seg.color;
+      ctx.fillText(seg.label, 0, 0);
+    }
 
     ctx.restore();
-  });
+  }
 
-  // Outer ring
+  // ── Outer gold ring ──
   ctx.beginPath();
   ctx.arc(cx, cy, R, 0, Math.PI * 2);
   ctx.strokeStyle = "#f0c040";
-  ctx.lineWidth = 5;
+  ctx.lineWidth = 4;
   ctx.stroke();
 
-  // Center
+  // ── Center circle ──
   ctx.beginPath();
-  ctx.arc(cx, cy, 34, 0, Math.PI * 2);
+  ctx.arc(cx, cy, 30, 0, Math.PI * 2);
   ctx.fillStyle = "#0a0a1a";
   ctx.fill();
   ctx.strokeStyle = "#f0c040";
   ctx.lineWidth = 3;
   ctx.stroke();
+
   ctx.fillStyle = "#f0c040";
-  ctx.font = "bold 15px sans-serif";
+  ctx.font = "bold 13px Arial, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("NP", cx, cy);
-};
+}
 
-// ── Main component ────────────────────────────────────────────────────────
+// ── RESULT CARD ───────────────────────────────────────────────────────────────
+function ResultCard({ result, wonPrize }) {
+  if (!result) return null;
+
+  const isLoss = result.prize_tier === "loss";
+  const isPrize = result.prize_tier === "prize";
+  const isCash = ["1000", "10000", "50000"].includes(result.prize_tier);
+
+  const title = isLoss
+    ? "House Wins!"
+    : isPrize
+      ? wonPrize
+        ? wonPrize.name
+        : "🎁 Prize on the way..."
+      : result.prize_tier === "1000"
+        ? "You Won $1,000!"
+        : result.prize_tier === "10000"
+          ? "You Won $10,000!"
+          : "You Won $50,000!";
+
+  const borderColor = isLoss
+    ? "rgba(255,68,68,0.5)"
+    : isPrize
+      ? "rgba(192,132,252,0.5)"
+      : "rgba(240,192,64,0.5)";
+  const bgColor = isLoss
+    ? "rgba(200,20,20,0.08)"
+    : isPrize
+      ? "rgba(192,132,252,0.08)"
+      : "rgba(240,192,64,0.08)";
+  const titleColor = isLoss ? "#ff4444" : isPrize ? "#c084fc" : "#f0c040";
+  const emoji = isLoss ? "💀" : isPrize ? "🎁" : "🎉";
+
+  return (
+    <motion.div
+      key="result-card"
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      style={{
+        marginTop: "1.5rem",
+        width: "100%",
+        maxWidth: "450px",
+        textAlign: "center",
+        background: bgColor,
+        border: `2px solid ${borderColor}`,
+        borderRadius: "18px",
+        padding: "1.5rem",
+      }}
+    >
+      <div style={{ fontSize: "2.5rem", marginBottom: "6px" }}>{emoji}</div>
+
+      <h3
+        style={{
+          fontWeight: 900,
+          fontSize: "1.6rem",
+          marginBottom: "4px",
+          color: titleColor,
+        }}
+      >
+        {title}
+      </h3>
+
+      {/* Show prize image after shuffle completes */}
+      {isPrize && wonPrize && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{ marginTop: "1rem" }}
+        >
+          <img
+            src={wonPrize.image_url || wonPrize.image || ""}
+            alt={wonPrize.name}
+            style={{
+              width: "100%",
+              borderRadius: "10px",
+              maxHeight: "160px",
+              objectFit: "cover",
+            }}
+          />
+          <p style={{ color: "#00ff88", fontWeight: 700, marginTop: "6px" }}>
+            Valued at ${Number(wonPrize.estimated_value || 0).toLocaleString()}
+          </p>
+        </motion.div>
+      )}
+
+      {/* Cash win amount */}
+      {isCash && (
+        <p
+          style={{
+            color: "#00ff88",
+            fontSize: "1.1rem",
+            fontWeight: 700,
+            marginTop: "4px",
+          }}
+        >
+          ${Number(result.payout || 0).toLocaleString()} credited to your wallet
+        </p>
+      )}
+
+      {/* Bonus + seed */}
+      <p
+        style={{
+          color: "var(--text-secondary)",
+          fontSize: "0.78rem",
+          marginTop: "10px",
+        }}
+      >
+        {isLoss ? "Consolation" : "Winner"} bonus:{" "}
+        <span style={{ color: "#00ff88", fontWeight: 700 }}>
+          +${parseFloat(result.bonus_awarded || 0).toFixed(2)}
+        </span>
+        {"  ·  "}
+        <span
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.68rem",
+            opacity: 0.45,
+          }}
+        >
+          {(result.server_seed || "").slice(0, 12)}...
+        </span>
+      </p>
+    </motion.div>
+  );
+}
+
+// ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 export default function SpinWin() {
   const [betAmount, setBetAmount] = useState("100");
   const [spinning, setSpinning] = useState(false);
@@ -169,14 +302,18 @@ export default function SpinWin() {
   const canvasRef = useRef(null);
   const rotRef = useRef(0);
 
-  useEffect(() => {
-    renderWheel(canvasRef.current);
+  const fetchBalance = () =>
     walletAPI
       .getWallet()
       .then((r) => setBalance(r.data.data.balance))
       .catch(() => {});
+
+  useEffect(() => {
+    drawWheel(canvasRef.current);
+    fetchBalance();
   }, []);
 
+  // Pick a random segment index for the given tier
   const pickSegment = useCallback((tier) => {
     const matches = SEGMENTS.map((s, i) => ({ ...s, i })).filter(
       (s) => s.tier === tier,
@@ -214,62 +351,44 @@ export default function SpinWin() {
       const res = await gamesAPI.spin({ betAmount: bet, currency: "USD" });
       const data = res.data.data;
 
-      // Pick random matching segment
-      const matching = SEGMENTS.map((s, i) => ({ ...s, i })).filter(
-        (s) => s.tier === data.prize_tier,
-      );
-      const fallback = SEGMENTS.map((s, i) => ({ ...s, i })).filter(
-        (s) => s.tier === "loss",
-      );
-      const target =
-        matching.length > 0
-          ? matching[Math.floor(Math.random() * matching.length)]
-          : fallback[Math.floor(Math.random() * fallback.length)];
+      // 1. Which segment index matches backend tier?
+      const segIdx = pickSegment(data.prize_tier);
 
-      // Canvas draws segment i with center at:
-      // angle = i * SEG_DEG + SEG_DEG/2 - 90  (degrees, from 12 o'clock)
-      const segCanvasAngle = target.i * SEG_DEG + SEG_DEG / 2 - 90;
-
-      // Normalize to 0-360
-      const normalizedAngle = ((segCanvasAngle % 360) + 360) % 360;
-
-      // Tiny random nudge — stays well within segment boundary
-      const maxNudge = SEG_DEG * 0.35;
-      const nudge = (Math.random() - 0.5) * 2 * maxNudge;
-
-      // Current wheel rotation mod 360 (where is wheel right now)
+      // 2. Segment i center is at angle: i*SEG_DEG + SEG_DEG/2 - 90  (canvas degrees)
+      //    Pointer is at 12 o'clock = 0° screen.
+      //    To bring segment center to 0°, wheel must rotate by:
+      //    delta = -(segCenter + currentRot)  mod 360  (then add full spins)
+      const segCenter = segIdx * SEG_DEG + SEG_DEG / 2 - 90;
       const currentMod = ((rotRef.current % 360) + 360) % 360;
+      const nudge = (Math.random() - 0.5) * SEG_DEG * 0.38; // safe inner nudge
+      let align = (((-segCenter - currentMod + nudge) % 360) + 360) % 360;
+      if (align < 10) align += 360; // ensure forward spin
 
-      // How much extra rotation needed to align segment under pointer
-      let extra = normalizedAngle - currentMod + nudge;
-      if (extra < 0) extra += 360;
-
-      // Add full spins (min 5, max 8 for drama)
-      const fullSpins = 360 * (5 + Math.floor(Math.random() * 4));
-      const delta = fullSpins + extra;
+      const spins = 360 * (6 + Math.floor(Math.random() * 3));
+      const delta = spins + align;
 
       rotRef.current += delta;
       setTotalRot(rotRef.current);
 
+      // 3. Show result after animation (duration 6s + 0.5s buffer)
       setTimeout(() => {
         setResult(data);
         setHistory((prev) => [data, ...prev].slice(0, 6));
-        walletAPI
-          .getWallet()
-          .then((r) => setBalance(r.data.data.balance))
-          .catch(() => {});
+        fetchBalance();
         setSpinning(false);
 
         if (data.prize_tier === "prize") {
-          setTimeout(() => setShowShuffle(true), 500);
+          setTimeout(() => setShowShuffle(true), 600);
         } else if (data.prize_tier === "loss") {
           toast.error("💀 House wins!");
         } else {
           toast.success(`🎉 ${data.message}`);
         }
-      }, 6300);
+      }, 6500);
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Connection error");
+      toast.error(
+        err?.response?.data?.message || "Connection error — try again",
+      );
       setSpinning(false);
     }
   };
@@ -277,8 +396,10 @@ export default function SpinWin() {
   const handleShuffleClose = (prize) => {
     setWonPrize(prize);
     setShowShuffle(false);
-    toast.success(`🎁 You won: ${prize.name}!`);
+    if (prize) toast.success(`🎁 You won: ${prize.name}!`);
   };
+
+  const payout = result ? Number(result.payout || 0) : 0;
 
   return (
     <div
@@ -293,7 +414,8 @@ export default function SpinWin() {
         <div style={{ marginBottom: "1.5rem" }}>
           <h1 style={{ fontSize: "1.8rem", fontWeight: 900 }}>🎰 Spin & Win</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-            Min $100 · Physical prizes at 10% · 60% house edge · Provably fair
+            Min $100 · Provably fair · 60% house edge · Physical prizes
+            available
           </p>
         </div>
 
@@ -305,7 +427,7 @@ export default function SpinWin() {
             alignItems: "start",
           }}
         >
-          {/* Wheel */}
+          {/* ── LEFT col ── */}
           <div
             style={{
               display: "flex",
@@ -313,10 +435,11 @@ export default function SpinWin() {
               alignItems: "center",
             }}
           >
+            {/* Wheel */}
             <div
               style={{ position: "relative", width: "100%", maxWidth: "450px" }}
             >
-              {/* Pointer */}
+              {/* Gold pointer */}
               <div
                 style={{
                   position: "absolute",
@@ -349,7 +472,7 @@ export default function SpinWin() {
 
             {/* Spinning label */}
             {spinning && (
-              <motion.div
+              <motion.p
                 animate={{ opacity: [0.5, 1, 0.5] }}
                 transition={{ repeat: Infinity, duration: 0.9 }}
                 style={{
@@ -362,120 +485,22 @@ export default function SpinWin() {
                 }}
               >
                 <RotateCcw
-                  size={16}
+                  size={15}
                   style={{ animation: "spin 0.5s linear infinite" }}
                 />
                 Spinning...
-              </motion.div>
+              </motion.p>
             )}
 
-            {/* Result card */}
+            {/* Result */}
             <AnimatePresence>
               {result && !showShuffle && (
-                <motion.div
-                  key="result"
-                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  style={{
-                    marginTop: "1.5rem",
-                    width: "100%",
-                    maxWidth: "450px",
-                    textAlign: "center",
-                    background:
-                      result.prize_tier === "loss"
-                        ? "rgba(255,40,40,0.08)"
-                        : "rgba(240,192,64,0.08)",
-                    border: `2px solid ${result.prize_tier === "loss" ? "rgba(255,68,68,0.45)" : "rgba(240,192,64,0.5)"}`,
-                    borderRadius: "18px",
-                    padding: "1.5rem",
-                  }}
-                >
-                  <div style={{ fontSize: "2.5rem", marginBottom: "6px" }}>
-                    {result.prize_tier === "loss"
-                      ? "💀"
-                      : result.prize_tier === "prize"
-                        ? "🎁"
-                        : "🎉"}
-                  </div>
-
-                  <h3
-                    style={{
-                      fontWeight: 900,
-                      fontSize: "1.7rem",
-                      marginBottom: "4px",
-                      color:
-                        result.prize_tier === "loss" ? "#ff4444" : "#f0c040",
-                    }}
-                  >
-                    {result.prize_tier === "loss"
-                      ? "House Wins!"
-                      : result.prize_tier === "prize"
-                        ? wonPrize
-                          ? wonPrize.name
-                          : "🎁 Prize Incoming..."
-                        : `$${Number(result.payout).toLocaleString()}`}
-                  </h3>
-
-                  {wonPrize && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      style={{ marginTop: "1rem" }}
-                    >
-                      <img
-                        src={wonPrize.image_url || wonPrize.image}
-                        alt={wonPrize.name}
-                        style={{
-                          width: "100%",
-                          borderRadius: "10px",
-                          maxHeight: "160px",
-                          objectFit: "cover",
-                        }}
-                        onError={(e) => (e.target.style.display = "none")}
-                      />
-                      <p
-                        style={{
-                          color: "#00ff88",
-                          fontWeight: 700,
-                          marginTop: "6px",
-                        }}
-                      >
-                        $
-                        {Number(wonPrize.estimated_value || 0).toLocaleString()}
-                      </p>
-                    </motion.div>
-                  )}
-
-                  <p
-                    style={{
-                      color: "var(--text-secondary)",
-                      fontSize: "0.8rem",
-                      marginTop: "10px",
-                    }}
-                  >
-                    {result.prize_tier === "loss" ? "Consolation" : "Winner"}{" "}
-                    bonus:{" "}
-                    <span style={{ color: "#00ff88", fontWeight: 700 }}>
-                      +${parseFloat(result.bonus_awarded || 0).toFixed(2)}
-                    </span>
-                    {"  ·  "}
-                    <span
-                      style={{
-                        fontFamily: "monospace",
-                        fontSize: "0.7rem",
-                        opacity: 0.6,
-                      }}
-                    >
-                      {result.server_seed?.slice(0, 14)}...
-                    </span>
-                  </p>
-                </motion.div>
+                <ResultCard result={result} wonPrize={wonPrize} />
               )}
             </AnimatePresence>
           </div>
 
-          {/* Controls */}
+          {/* ── RIGHT col ── */}
           <div
             style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
           >
@@ -499,7 +524,7 @@ export default function SpinWin() {
                   style={{
                     color: "#f0c040",
                     fontWeight: 900,
-                    fontSize: "1.6rem",
+                    fontSize: "1.5rem",
                   }}
                 >
                   $
@@ -611,7 +636,7 @@ export default function SpinWin() {
                   gap: "8px",
                   boxShadow: spinning
                     ? "none"
-                    : "0 0 20px rgba(240,192,64,0.35)",
+                    : "0 0 20px rgba(240,192,64,0.3)",
                 }}
               >
                 {spinning ? (
@@ -703,7 +728,7 @@ export default function SpinWin() {
                   gap: "6px",
                 }}
               >
-                <Gift size={14} /> Prize Pool Preview
+                <Gift size={14} /> Prize Pool
               </h3>
               <div
                 style={{
@@ -712,16 +737,14 @@ export default function SpinWin() {
                   gap: "6px",
                 }}
               >
-                {PREVIEW_PRIZES.map((p, i) => (
-                  <motion.div
+                {PREVIEW.map((p, i) => (
+                  <div
                     key={i}
-                    whileHover={{ scale: 1.04 }}
                     style={{
                       borderRadius: "8px",
                       overflow: "hidden",
                       position: "relative",
-                      height: "68px",
-                      cursor: "default",
+                      height: "64px",
                     }}
                   >
                     <img
@@ -732,10 +755,6 @@ export default function SpinWin() {
                         height: "100%",
                         objectFit: "cover",
                       }}
-                      onError={(e) => {
-                        e.target.style.background = "#1a1a2e";
-                        e.target.style.display = "none";
-                      }}
                     />
                     <div
                       style={{
@@ -744,8 +763,8 @@ export default function SpinWin() {
                         left: 0,
                         right: 0,
                         background:
-                          "linear-gradient(transparent,rgba(0,0,0,0.9))",
-                        padding: "3px 6px",
+                          "linear-gradient(transparent,rgba(0,0,0,0.88))",
+                        padding: "3px 5px",
                       }}
                     >
                       <p
@@ -753,7 +772,6 @@ export default function SpinWin() {
                           color: "#fff",
                           fontSize: "0.58rem",
                           fontWeight: 700,
-                          lineHeight: 1.2,
                         }}
                       >
                         {p.name}
@@ -762,19 +780,9 @@ export default function SpinWin() {
                         {p.value}
                       </p>
                     </div>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
-              <p
-                style={{
-                  color: "var(--text-secondary)",
-                  fontSize: "0.7rem",
-                  marginTop: "8px",
-                  textAlign: "center",
-                }}
-              >
-                20 prizes total · Cars · Mansions · Vacations · Watches
-              </p>
             </div>
 
             {/* History */}
@@ -808,7 +816,7 @@ export default function SpinWin() {
                     }}
                   >
                     <span style={{ color: "var(--text-secondary)" }}>
-                      ${parseFloat(h.spin?.bet_amount || 0).toFixed(0)} bet
+                      ${parseFloat(h.spin?.bet_amount || 100).toFixed(0)} bet
                     </span>
                     <span
                       style={{
@@ -820,7 +828,7 @@ export default function SpinWin() {
                         ? "💀 Loss"
                         : h.prize_tier === "prize"
                           ? "🎁 Prize"
-                          : `+$${Number(h.payout).toLocaleString()}`}
+                          : `+$${Number(h.payout || 0).toLocaleString()}`}
                     </span>
                   </div>
                 ))}
@@ -830,6 +838,7 @@ export default function SpinWin() {
         </div>
       </div>
 
+      {/* Prize shuffle — receives EXACT prize from backend */}
       {showShuffle && (
         <PrizeShuffle wonPrize={result?.prize} onClose={handleShuffleClose} />
       )}
