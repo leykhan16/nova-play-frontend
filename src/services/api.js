@@ -90,4 +90,18 @@ export const gamesAPI = {
   endGame: (id, data) => api.post(`/games/${id}/end`, data),
 };
 
+//suport
+export const supportAPI = {
+  createTicket: (data) => api.post("/support", data),
+  getMyTickets: () => api.get("/support/my-tickets"),
+  getTicket: (id) => api.get(`/support/${id}`),
+  replyToTicket: (id, data) => api.post(`/support/${id}/reply`, data),
+  getAllTickets: (status) =>
+    api.get(`/support${status ? `?status=${status}` : ""}`),
+  updateTicketStatus: (id, data) => api.put(`/support/${id}/status`, data),
+  submitPrizeDelivery: (data) => api.post("/support/prize-delivery", data),
+  getPrizeDeliveries: () => api.get("/support/prize-deliveries"),
+  updateDelivery: (id, data) =>
+    api.put(`/support/prize-deliveries/${id}`, data),
+};
 export default api;

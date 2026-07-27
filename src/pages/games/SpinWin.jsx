@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { gamesAPI, walletAPI } from "../../services/api";
 import toast from "react-hot-toast";
 import { ArrowRight, RotateCcw, Gift } from "lucide-react";
 import PrizeShuffle from "../../components/ui/PrizeShuffle";
 
-// ── 16 SEGMENTS: 8 loss · 3×$1K · 2×$10K · 1×$50K · 2×prize ────────────────
+// ── 16 SEGMENTS ───────────────────────────────────────────────────────────────
 const SEGMENTS = [
   { label: "?", color: "#cc2222", tier: "loss" },
   { label: "$1K", color: "#00ff88", tier: "1000" },
@@ -28,9 +28,9 @@ const SEGMENTS = [
 const N = SEGMENTS.length; // 16
 const SEG_DEG = 360 / N; // 22.5°
 
-const PRIZE_ODDS = [
+const ODDS = [
   { label: "? Loss", color: "#ff4444", chance: "60%" },
-  { label: "PRIZE", color: "#c084fc", chance: "10%" },
+  { label: "PRIZE 🎁", color: "#c084fc", chance: "10%" },
   { label: "$1,000", color: "#00ff88", chance: "10%" },
   { label: "$10,000", color: "#00d4ff", chance: "7%" },
   { label: "$50,000", color: "#f0c040", chance: "13%" },
@@ -75,30 +75,28 @@ const PREVIEW = [
   },
 ];
 
-// ── WHEEL CANVAS RENDERER ─────────────────────────────────────────────────────
+// ── WHEEL CANVAS ──────────────────────────────────────────────────────────────
 function drawWheel(canvas) {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
-  const W = canvas.width;
-  const H = canvas.height;
-  const cx = W / 2;
-  const cy = H / 2;
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
   const R = cx - 4;
-  const toRad = (d) => (d * Math.PI) / 180;
+  const rad = (d) => (d * Math.PI) / 180;
 
-  ctx.clearRect(0, 0, W, H);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   for (let i = 0; i < N; i++) {
     const seg = SEGMENTS[i];
-    const startRad = toRad(i * SEG_DEG - 90);
-    const endRad = toRad((i + 1) * SEG_DEG - 90);
-    const midRad = toRad(i * SEG_DEG + SEG_DEG / 2 - 90);
+    const sRad = rad(i * SEG_DEG - 90);
+    const eRad = rad((i + 1) * SEG_DEG - 90);
+    const midRad = rad(i * SEG_DEG + SEG_DEG / 2 - 90);
     const isLoss = seg.tier === "loss";
 
-    // ── Segment background ──
+    // Fill
     ctx.beginPath();
     ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, R, startRad, endRad);
+    ctx.arc(cx, cy, R, sRad, eRad);
     ctx.closePath();
     ctx.fillStyle = isLoss
       ? i % 2 === 0
@@ -110,43 +108,41 @@ function drawWheel(canvas) {
     ctx.lineWidth = isLoss ? 0.6 : 1.8;
     ctx.stroke();
 
-    // ── Label ──
-    const labelR = R * 0.68;
-    const lx = cx + labelR * Math.cos(midRad);
-    const ly = cy + labelR * Math.sin(midRad);
+    // Label
+    const lr = R * 0.68;
+    const lx = cx + lr * Math.cos(midRad);
+    const ly = cy + lr * Math.sin(midRad);
 
     ctx.save();
     ctx.translate(lx, ly);
-    ctx.rotate(midRad + Math.PI / 2); // rotate text to face outward
+    ctx.rotate(midRad + Math.PI / 2);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
     if (isLoss) {
-      ctx.font = "bold 18px Arial, sans-serif";
+      ctx.font = "bold 20px Arial, sans-serif";
       ctx.fillStyle = "#ff4444";
       ctx.fillText("?", 0, 0);
     } else if (seg.tier === "prize") {
-      ctx.font = "bold 9px Arial, sans-serif";
+      ctx.font = "bold 8.5px Arial, sans-serif";
       ctx.fillStyle = "#c084fc";
       ctx.fillText("PRIZE", 0, 0);
     } else {
-      // e.g. "$1K", "$10K", "$50K"
       ctx.font = "bold 9px Arial, sans-serif";
       ctx.fillStyle = seg.color;
       ctx.fillText(seg.label, 0, 0);
     }
-
     ctx.restore();
   }
 
-  // ── Outer gold ring ──
+  // Outer ring
   ctx.beginPath();
   ctx.arc(cx, cy, R, 0, Math.PI * 2);
   ctx.strokeStyle = "#f0c040";
   ctx.lineWidth = 4;
   ctx.stroke();
 
-  // ── Center circle ──
+  // Center
   ctx.beginPath();
   ctx.arc(cx, cy, 30, 0, Math.PI * 2);
   ctx.fillStyle = "#0a0a1a";
@@ -154,7 +150,6 @@ function drawWheel(canvas) {
   ctx.strokeStyle = "#f0c040";
   ctx.lineWidth = 3;
   ctx.stroke();
-
   ctx.fillStyle = "#f0c040";
   ctx.font = "bold 13px Arial, sans-serif";
   ctx.textAlign = "center";
@@ -168,14 +163,13 @@ function ResultCard({ result, wonPrize }) {
 
   const isLoss = result.prize_tier === "loss";
   const isPrize = result.prize_tier === "prize";
-  const isCash = ["1000", "10000", "50000"].includes(result.prize_tier);
 
   const title = isLoss
     ? "House Wins!"
     : isPrize
       ? wonPrize
         ? wonPrize.name
-        : "🎁 Prize on the way..."
+        : "🎁 Prize Coming..."
       : result.prize_tier === "1000"
         ? "You Won $1,000!"
         : result.prize_tier === "10000"
@@ -187,17 +181,20 @@ function ResultCard({ result, wonPrize }) {
     : isPrize
       ? "rgba(192,132,252,0.5)"
       : "rgba(240,192,64,0.5)";
+
   const bgColor = isLoss
     ? "rgba(200,20,20,0.08)"
     : isPrize
       ? "rgba(192,132,252,0.08)"
       : "rgba(240,192,64,0.08)";
+
   const titleColor = isLoss ? "#ff4444" : isPrize ? "#c084fc" : "#f0c040";
+
   const emoji = isLoss ? "💀" : isPrize ? "🎁" : "🎉";
 
   return (
     <motion.div
-      key="result-card"
+      key="result"
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
@@ -225,7 +222,21 @@ function ResultCard({ result, wonPrize }) {
         {title}
       </h3>
 
-      {/* Show prize image after shuffle completes */}
+      {/* Cash amount */}
+      {!isLoss && !isPrize && (
+        <p
+          style={{
+            color: "#00ff88",
+            fontSize: "1.05rem",
+            fontWeight: 700,
+            marginTop: "4px",
+          }}
+        >
+          ${Number(result.payout || 0).toLocaleString()} added to your wallet
+        </p>
+      )}
+
+      {/* Prize image — shown after shuffle */}
       {isPrize && wonPrize && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -246,20 +257,6 @@ function ResultCard({ result, wonPrize }) {
             Valued at ${Number(wonPrize.estimated_value || 0).toLocaleString()}
           </p>
         </motion.div>
-      )}
-
-      {/* Cash win amount */}
-      {isCash && (
-        <p
-          style={{
-            color: "#00ff88",
-            fontSize: "1.1rem",
-            fontWeight: 700,
-            marginTop: "4px",
-          }}
-        >
-          ${Number(result.payout || 0).toLocaleString()} credited to your wallet
-        </p>
       )}
 
       {/* Bonus + seed */}
@@ -289,18 +286,19 @@ function ResultCard({ result, wonPrize }) {
   );
 }
 
-// ── MAIN COMPONENT ────────────────────────────────────────────────────────────
+// ── MAIN ──────────────────────────────────────────────────────────────────────
 export default function SpinWin() {
   const [betAmount, setBetAmount] = useState("100");
   const [spinning, setSpinning] = useState(false);
-  const [totalRot, setTotalRot] = useState(0);
   const [result, setResult] = useState(null);
   const [balance, setBalance] = useState(null);
   const [history, setHistory] = useState([]);
   const [showShuffle, setShowShuffle] = useState(false);
   const [wonPrize, setWonPrize] = useState(null);
+
   const canvasRef = useRef(null);
-  const rotRef = useRef(0);
+  const wheelRef = useRef(null); // raw div — CSS rotation, not Framer Motion
+  const rotRef = useRef(0); // cumulative degrees
 
   const fetchBalance = () =>
     walletAPI
@@ -313,7 +311,7 @@ export default function SpinWin() {
     fetchBalance();
   }, []);
 
-  // Pick a random segment index for the given tier
+  // Pick a random segment index matching the given tier
   const pickSegment = useCallback((tier) => {
     const matches = SEGMENTS.map((s, i) => ({ ...s, i })).filter(
       (s) => s.tier === tier,
@@ -351,26 +349,34 @@ export default function SpinWin() {
       const res = await gamesAPI.spin({ betAmount: bet, currency: "USD" });
       const data = res.data.data;
 
-      // 1. Which segment index matches backend tier?
+      // 1. Which segment to land on
       const segIdx = pickSegment(data.prize_tier);
 
-      // 2. Segment i center is at angle: i*SEG_DEG + SEG_DEG/2 - 90  (canvas degrees)
-      //    Pointer is at 12 o'clock = 0° screen.
-      //    To bring segment center to 0°, wheel must rotate by:
-      //    delta = -(segCenter + currentRot)  mod 360  (then add full spins)
-      const segCenter = segIdx * SEG_DEG + SEG_DEG / 2 - 90;
+      // 2. Compute exact rotation needed
+      // Segment i center sits at canvasDeg from 12-o-clock when wheel is at 0°
+      // 2. Compute exact rotation needed
+      const canvasDeg = segIdx * SEG_DEG + SEG_DEG / 2 - 90;
+      const screenPos = ((canvasDeg % 360) + 360) % 360;
+      // To bring screenPos to pointer (0°), rotate by (360 - screenPos)
+      const targetRot = (360 - screenPos) % 360;
       const currentMod = ((rotRef.current % 360) + 360) % 360;
-      const nudge = (Math.random() - 0.5) * SEG_DEG * 0.38; // safe inner nudge
-      let align = (((-segCenter - currentMod + nudge) % 360) + 360) % 360;
-      if (align < 10) align += 360; // ensure forward spin
-
-      const spins = 360 * (6 + Math.floor(Math.random() * 3));
-      const delta = spins + align;
+      let delta = (targetRot - currentMod + 360) % 360;
+      if (delta < 10) delta += 360;
+      delta += 360 * (6 + Math.floor(Math.random() * 3));
+      delta += (Math.random() - 0.5) * SEG_DEG * 0.35;
 
       rotRef.current += delta;
-      setTotalRot(rotRef.current);
 
-      // 3. Show result after animation (duration 6s + 0.5s buffer)
+      // 3. Apply rotation via plain CSS on a raw div
+      //    This avoids Framer Motion's internal normalization which corrupts
+      //    large rotation values and lands on the wrong segment.
+      if (wheelRef.current) {
+        wheelRef.current.style.transition =
+          "transform 6s cubic-bezier(0.08, 0.82, 0.05, 1.0)";
+        wheelRef.current.style.transform = `rotate(${rotRef.current}deg)`;
+      }
+
+      // 4. Show result after spin completes (6s + 0.5s buffer)
       setTimeout(() => {
         setResult(data);
         setHistory((prev) => [data, ...prev].slice(0, 6));
@@ -399,8 +405,6 @@ export default function SpinWin() {
     if (prize) toast.success(`🎁 You won: ${prize.name}!`);
   };
 
-  const payout = result ? Number(result.payout || 0) : 0;
-
   return (
     <div
       style={{
@@ -410,12 +414,10 @@ export default function SpinWin() {
       }}
     >
       <div style={{ maxWidth: "1060px", margin: "0 auto" }}>
-        {/* Header */}
         <div style={{ marginBottom: "1.5rem" }}>
           <h1 style={{ fontSize: "1.8rem", fontWeight: 900 }}>🎰 Spin & Win</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-            Min $100 · Provably fair · 60% house edge · Physical prizes
-            available
+            Min $100 · Provably fair · Physical prizes available
           </p>
         </div>
 
@@ -427,7 +429,7 @@ export default function SpinWin() {
             alignItems: "start",
           }}
         >
-          {/* ── LEFT col ── */}
+          {/* LEFT — Wheel */}
           <div
             style={{
               display: "flex",
@@ -435,11 +437,10 @@ export default function SpinWin() {
               alignItems: "center",
             }}
           >
-            {/* Wheel */}
             <div
               style={{ position: "relative", width: "100%", maxWidth: "450px" }}
             >
-              {/* Gold pointer */}
+              {/* Pointer */}
               <div
                 style={{
                   position: "absolute",
@@ -451,15 +452,20 @@ export default function SpinWin() {
                   height: 0,
                   borderLeft: "16px solid transparent",
                   borderRight: "16px solid transparent",
-                  borderTop: "32px solid #f0c040",
-                  filter: "drop-shadow(0 0 16px #f0c040)",
+                  borderTop: "30px solid #f0c040",
+                  filter: "drop-shadow(0 0 14px #f0c040)",
                 }}
               />
 
-              <motion.div
-                animate={{ rotate: totalRot }}
-                transition={{ duration: 6, ease: [0.08, 0.82, 0.05, 1.0] }}
-                style={{ width: "100%", aspectRatio: "1" }}
+              {/* Wheel — raw div with CSS transition */}
+              <div
+                ref={wheelRef}
+                style={{
+                  width: "100%",
+                  aspectRatio: "1",
+                  transform: "rotate(0deg)",
+                  willChange: "transform",
+                }}
               >
                 <canvas
                   ref={canvasRef}
@@ -467,10 +473,10 @@ export default function SpinWin() {
                   height={450}
                   style={{ width: "100%", height: "100%", display: "block" }}
                 />
-              </motion.div>
+              </div>
             </div>
 
-            {/* Spinning label */}
+            {/* Spinning indicator */}
             {spinning && (
               <motion.p
                 animate={{ opacity: [0.5, 1, 0.5] }}
@@ -500,7 +506,7 @@ export default function SpinWin() {
             </AnimatePresence>
           </div>
 
-          {/* ── RIGHT col ── */}
+          {/* RIGHT — Controls */}
           <div
             style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
           >
@@ -535,7 +541,7 @@ export default function SpinWin() {
               </div>
             )}
 
-            {/* Bet form */}
+            {/* Bet */}
             <div
               style={{
                 background: "var(--card)",
@@ -673,7 +679,7 @@ export default function SpinWin() {
               >
                 Win Odds
               </h3>
-              {PRIZE_ODDS.map((t) => (
+              {ODDS.map((t) => (
                 <div
                   key={t.label}
                   style={{
@@ -708,7 +714,7 @@ export default function SpinWin() {
               ))}
             </div>
 
-            {/* Prize pool preview */}
+            {/* Prize pool */}
             <div
               style={{
                 background: "var(--card)",
@@ -783,6 +789,16 @@ export default function SpinWin() {
                   </div>
                 ))}
               </div>
+              <p
+                style={{
+                  color: "var(--text-secondary)",
+                  fontSize: "0.7rem",
+                  marginTop: "8px",
+                  textAlign: "center",
+                }}
+              >
+                Cars · Mansions · Vacations · Watches & more
+              </p>
             </div>
 
             {/* History */}

@@ -2,12 +2,14 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { RotateCcw } from "lucide-react";
 import { usePrizes, FALLBACK_PRIZES } from "../../hooks/usePrizes";
+import PrizeDeliveryForm from "./PrizeDeliveryForm";
 
 export default function PrizeShuffle({ onClose, wonPrize = null }) {
   const { prizes } = usePrizes();
   const [idx, setIdx] = useState(0);
   const [done, setDone] = useState(false);
   const [winner, setWinner] = useState(null);
+  const [showDelivery, setShowDelivery] = useState(false);
 
   const prizePool = prizes.length > 0 ? prizes : FALLBACK_PRIZES;
 
@@ -239,7 +241,7 @@ export default function PrizeShuffle({ onClose, wonPrize = null }) {
               </p>
             </div>
             <button
-              onClick={() => onClose(winner)}
+              onClick={() => setShowDelivery(true)}
               style={{
                 width: "100%",
                 padding: "15px",
@@ -258,6 +260,15 @@ export default function PrizeShuffle({ onClose, wonPrize = null }) {
           </motion.div>
         )}
       </motion.div>
+      {showDelivery && (
+        <PrizeDeliveryForm
+          prize={winner}
+          onClose={() => {
+            setShowDelivery(false);
+            onClose(winner);
+          }}
+        />
+      )}
     </motion.div>
   );
 }

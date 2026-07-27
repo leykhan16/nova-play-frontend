@@ -49,6 +49,17 @@ export default function Navbar() {
         Support
       </Link>
 
+      <Link
+        to="/support"
+        style={{
+          color: "var(--text-secondary)",
+          textDecoration: "none",
+          fontSize: "0.9rem",
+        }}
+      >
+        Support
+      </Link>
+
       <Link to="/lobby" style={{ textDecoration: "none" }}>
         <span
           style={{
