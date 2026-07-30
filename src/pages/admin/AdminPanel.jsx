@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext } from "react";
-import { motion } from "framer-motion";
-import { paymentsAPI } from "../../services/api";
+import { motion, AnimatePresence } from "framer-motion";
+import { paymentsAPI, supportAPI } from "../../services/api";
 import api from "../../services/api";
 import { AuthContext } from "../../context/AuthContext";
 import { connectSocket } from "../../services/socket";
@@ -10,266 +10,207 @@ import {
   XCircle,
   Send,
   RefreshCw,
-  Bell,
   Shield,
   Copy,
+  Bell,
+  Package,
+  Ticket,
+  CreditCard,
+  Users,
 } from "lucide-react";
+
+const TABS = [
+  { id: "payments", label: "Payments", icon: <CreditCard size={16} /> },
+  { id: "tickets", label: "Support", icon: <Ticket size={16} /> },
+  { id: "deliveries", label: "Prizes", icon: <Package size={16} /> },
+  { id: "admins", label: "Admins", icon: <Users size={16} /> },
+];
 
 export default function AdminPanel() {
   const { user } = useContext(AuthContext);
+  const [activeTab, setActiveTab] = useState("payments");
   const [payments, setPayments] = useState([]);
+  const [tickets, setTickets] = useState([]);
+  const [deliveries, setDeliveries] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [detailsForm, setDetailsForm] = useState({});
   const [sendingDetails, setSendingDetails] = useState(false);
   const [rejectNote, setRejectNote] = useState("");
-  const [notifications, setNotifications] = useState([]);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [ticketReplies, setTicketReplies] = useState([]);
+  const [replyMsg, setReplyMsg] = useState("");
   const [inviteCode, setInviteCode] = useState(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
-  const [tickets, setTickets] = useState([]);
-  const [activeTab, setActiveTab] = useState("payments"); // 'payments' | 'tickets'
-  const [ticketFilter, setTicketFilter] = useState("open");
+  const [submitting, setSubmitting] = useState(false);
 
-  const fetchTickets = async () => {
-    try {
-      const res = await api.get("/support");
-      setTickets(res.data.data);
-    } catch {}
-  };
   useEffect(() => {
-    fetchPayments();
-    fetchTickets();
-
+    fetchAll();
     const socket = connectSocket();
     socket.emit("join_admin_room", { role: user.role });
 
-    // Support ticket listener
-    socket.on("new_support_ticket", (data) => {
-      setTickets((prev) => [data, ...prev]);
-      toast.custom(
-        () => (
-          <div
-            style={{
-              background: "#12122a",
-              border: "1px solid #c084fc",
-              borderRadius: "12px",
-              padding: "1rem",
-            }}
-          >
-            <span style={{ color: "#c084fc", fontWeight: 700 }}>
-              New Support Ticket
-            </span>
-          </div>
-        ),
-        { duration: 6000 },
-      );
-    });
+    const addNotif = (n) =>
+      setNotifications((prev) => [n, ...prev].slice(0, 20));
 
     socket.on("payment_initiated", (data) => {
-      toast.custom(
-        () => (
-          <div
-            style={{
-              background: "#12122a",
-              border: "1px solid #f0c040",
-              borderRadius: "12px",
-              padding: "1rem",
-              maxWidth: "320px",
-              boxShadow: "0 0 20px rgba(240,192,64,0.2)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                marginBottom: "4px",
-              }}
-            >
-              <Bell size={16} color="#f0c040" />
-              <span style={{ color: "#f0c040", fontWeight: 700 }}>
-                New Payment Request
-              </span>
-            </div>
-            <p style={{ color: "#a0a0c0", fontSize: "0.85rem" }}>
-              {data.username} wants to deposit ${data.amount} via{" "}
-              {data.payment_method}
-            </p>
-          </div>
+      addNotif({
+        type: "payment",
+        title: "New Payment Request",
+        msg: `${data.username} wants to deposit $${data.amount}`,
+        color: "#f0c040",
+        time: new Date(),
+      });
+      toast.custom(() =>
+        notifToast(
+          "💰",
+          "New Payment",
+          `${data.username} — $${data.amount}`,
+          "#f0c040",
         ),
-        { duration: 6000 },
       );
-      setNotifications((prev) => [data, ...prev].slice(0, 10));
       fetchPayments();
     });
 
     socket.on("payment_confirming", (data) => {
-      toast.custom(
-        () => (
-          <div
-            style={{
-              background: "#12122a",
-              border: "1px solid #00ff88",
-              borderRadius: "12px",
-              padding: "1rem",
-              maxWidth: "320px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                marginBottom: "4px",
-              }}
-            >
-              <CheckCircle size={16} color="#00ff88" />
-              <span style={{ color: "#00ff88", fontWeight: 700 }}>
-                Payment Sent!
-              </span>
-            </div>
-            <p style={{ color: "#a0a0c0", fontSize: "0.85rem" }}>
-              {data.user} says they've sent ${data.amount} — verify now
-            </p>
-          </div>
+      addNotif({
+        type: "payment",
+        title: "Payment Sent",
+        msg: `${data.user} confirmed sending $${data.amount}`,
+        color: "#00ff88",
+        time: new Date(),
+      });
+      toast.custom(() =>
+        notifToast(
+          "✅",
+          "Payment Sent",
+          `${data.user} needs verification`,
+          "#00ff88",
         ),
-        { duration: 6000 },
       );
       fetchPayments();
     });
 
     socket.on("gift_card_submitted", (data) => {
-      toast.custom(
-        () => (
-          <div
-            style={{
-              background: "#12122a",
-              border: "1px solid #c084fc",
-              borderRadius: "12px",
-              padding: "1rem",
-              maxWidth: "320px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                marginBottom: "4px",
-              }}
-            >
-              <span>🎁</span>
-              <span style={{ color: "#c084fc", fontWeight: 700 }}>
-                Gift Card Submitted
-              </span>
-            </div>
-            <p style={{ color: "#a0a0c0", fontSize: "0.85rem" }}>
-              {data.username} submitted a {data.card_type} gift card — $
-              {data.amount}
-            </p>
-          </div>
-        ),
-        { duration: 6000 },
-      );
+      addNotif({
+        type: "gift_card",
+        title: "Gift Card",
+        msg: `${data.username} submitted a ${data.card_type} card`,
+        color: "#c084fc",
+        time: new Date(),
+      });
       fetchPayments();
     });
 
-    socket.on("jackpot_won", (data) => {
-      toast.custom(
-        () => (
-          <div
-            style={{
-              background: "#12122a",
-              border: "2px solid #c084fc",
-              borderRadius: "12px",
-              padding: "1rem",
-              maxWidth: "320px",
-              boxShadow: "0 0 20px rgba(192,132,252,0.5)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                marginBottom: "6px",
-              }}
-            >
-              <span style={{ fontSize: "1.2rem" }}>🏆</span>
-              <span style={{ color: "#c084fc", fontWeight: 900 }}>
-                JACKPOT WON!
-              </span>
-            </div>
-
-            <p style={{ color: "#fff", fontWeight: 700, marginBottom: "2px" }}>
-              {data.username}
-            </p>
-
-            <p
-              style={{
-                color: "#00ff88",
-                fontWeight: 700,
-                fontSize: "0.9rem",
-              }}
-            >
-              {data.prize}
-            </p>
-
-            <p style={{ color: "#a0a0c0", fontSize: "0.8rem" }}>
-              via {data.game}
-            </p>
-          </div>
+    socket.on("prize_delivery_submitted", (data) => {
+      addNotif({
+        type: "delivery",
+        title: "Prize Delivery",
+        msg: "A player submitted a delivery form",
+        color: "#c084fc",
+        time: new Date(),
+      });
+      toast.custom(() =>
+        notifToast(
+          "🏆",
+          "Prize Delivery",
+          "Player submitted delivery form",
+          "#c084fc",
         ),
-        { duration: 10000 },
       );
-
-      setNotifications((prev) =>
-        [
-          {
-            id: Date.now(),
-            type: "jackpot",
-            title: "JACKPOT!",
-            message: `${data.username} won ${data.prize} on ${data.game}`,
-            time: new Date().toISOString(),
-            color: "#c084fc",
-            emoji: "🏆",
-          },
-          ...prev,
-        ].slice(0, 20),
-      );
+      fetchDeliveries();
     });
 
+    socket.on("ticket_updated", () => fetchTickets());
+
     return () => {
-      socket.off("new_support_ticket");
       socket.off("payment_initiated");
       socket.off("payment_confirming");
       socket.off("gift_card_submitted");
-      socket.off("jackpot_won");
-      socket.disconnect();
+      socket.off("prize_delivery_submitted");
+      socket.off("ticket_updated");
     };
-  }, [user]);
+  }, []);
 
+  const notifToast = (emoji, title, msg, color) => (
+    <div
+      style={{
+        background: "#12122a",
+        border: `1px solid ${color}`,
+        borderRadius: "12px",
+        padding: "1rem",
+        maxWidth: "320px",
+        boxShadow: `0 0 20px ${color}33`,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          marginBottom: "4px",
+        }}
+      >
+        <span>{emoji}</span>
+        <span style={{ color, fontWeight: 700, fontSize: "0.9rem" }}>
+          {title}
+        </span>
+      </div>
+      <p style={{ color: "#a0a0c0", fontSize: "0.82rem", margin: 0 }}>{msg}</p>
+    </div>
+  );
+
+  const fetchAll = () => {
+    fetchPayments();
+    fetchTickets();
+    fetchDeliveries();
+  };
   const fetchPayments = async () => {
     try {
-      const res = await paymentsAPI.getPending();
-      setPayments(res.data.data);
-    } catch (err) {
-      toast.error("Could not load payments");
+      const r = await paymentsAPI.getPending();
+      setPayments(r.data.data);
+    } catch {
     } finally {
       setLoading(false);
     }
   };
-
-  const handleGenerateInvite = async () => {
-    setGeneratingInvite(true);
+  const fetchTickets = async () => {
     try {
-      const res = await api.post("/auth/invite");
-      setInviteCode(res.data.data.code);
-      toast.success("Invite code generated — valid for 48 hours");
-    } catch (err) {
-      toast.error("Could not generate invite");
+      const r = await supportAPI.getAllTickets();
+      setTickets(r.data.data);
+    } catch {}
+  };
+  const fetchDeliveries = async () => {
+    try {
+      const r = await supportAPI.getPrizeDeliveries();
+      setDeliveries(r.data.data);
+    } catch {}
+  };
+
+  const openTicket = async (ticket) => {
+    try {
+      const r = await supportAPI.getTicket(ticket.id);
+      setSelectedTicket(r.data.data.ticket);
+      setTicketReplies(r.data.data.replies);
+    } catch {
+      toast.error("Could not load ticket");
+    }
+  };
+
+  const handleReplyTicket = async () => {
+    if (!replyMsg.trim()) return;
+    setSubmitting(true);
+    try {
+      const r = await supportAPI.replyToTicket(selectedTicket.id, {
+        message: replyMsg,
+      });
+      setTicketReplies((prev) => [...prev, r.data.data]);
+      setReplyMsg("");
+      toast.success("Reply sent!");
+    } catch {
+      toast.error("Could not send reply");
     } finally {
-      setGeneratingInvite(false);
+      setSubmitting(false);
     }
   };
 
@@ -278,7 +219,7 @@ export default function AdminPanel() {
       !detailsForm[paymentId] ||
       Object.keys(detailsForm[paymentId]).length === 0
     ) {
-      toast.error("Enter payment details first");
+      toast.error("Enter payment details");
       return;
     }
     setSendingDetails(true);
@@ -286,9 +227,10 @@ export default function AdminPanel() {
       await paymentsAPI.sendDetails(paymentId, {
         details: detailsForm[paymentId],
       });
-      toast.success("Payment details sent to user");
+      toast.success("Details sent to user");
       setSelectedPayment(null);
       setDetailsForm({});
+      fetchPayments();
     } catch (err) {
       toast.error(err.response?.data?.message || "Could not send details");
     } finally {
@@ -296,22 +238,22 @@ export default function AdminPanel() {
     }
   };
 
-  const handleApprove = async (paymentId) => {
+  const handleApprove = async (id) => {
     try {
-      await paymentsAPI.approve(paymentId);
-      toast.success("Payment approved — wallet credited!");
+      await paymentsAPI.approve(id);
+      toast.success("Approved — wallet credited!");
       fetchPayments();
     } catch (err) {
       toast.error(err.response?.data?.message || "Could not approve");
     }
   };
 
-  const handleReject = async (paymentId) => {
+  const handleReject = async (id) => {
     try {
-      await paymentsAPI.reject(paymentId, {
-        notes: rejectNote || "Payment rejected by admin",
+      await paymentsAPI.reject(id, {
+        notes: rejectNote || "Rejected by admin",
       });
-      toast.success("Payment rejected");
+      toast.success("Rejected");
       setRejectNote("");
       fetchPayments();
     } catch (err) {
@@ -319,27 +261,86 @@ export default function AdminPanel() {
     }
   };
 
-  const methodIcon = (method) => {
-    const icons = {
+  const handleGenerateInvite = async () => {
+    setGeneratingInvite(true);
+    try {
+      const r = await api.post("/auth/invite");
+      setInviteCode(r.data.data.code);
+      toast.success("Invite code generated!");
+    } catch {
+      toast.error("Could not generate invite");
+    } finally {
+      setGeneratingInvite(false);
+    }
+  };
+
+  const handleUpdateDelivery = async (id, status) => {
+    try {
+      await supportAPI.updateDelivery(id, { status });
+      toast.success(`Status updated to ${status}`);
+      fetchDeliveries();
+    } catch {
+      toast.error("Could not update");
+    }
+  };
+
+  const handleUpdateTicket = async (id, status) => {
+    try {
+      await supportAPI.updateTicketStatus(id, { status });
+      toast.success("Ticket updated");
+      fetchTickets();
+      setSelectedTicket(null);
+    } catch {
+      toast.error("Could not update ticket");
+    }
+  };
+
+  const methodIcon = (m) =>
+    ({
       bank_transfer: "🏦",
       crypto: "₿",
       zelle: "💸",
       card: "💳",
       apple_pay: "🍎",
       gift_card: "🎁",
-    };
-    return icons[method] || "💰";
-  };
-
-  const statusColor = (status) => {
-    const colors = {
+    })[m] || "💰";
+  const statusColor = (s) =>
+    ({
       pending: "#f0c040",
       confirming: "#00d4ff",
       completed: "#00ff88",
       failed: "#ff4444",
-    };
-    return colors[status] || "#a0a0c0";
+    })[s] || "#a0a0c0";
+  const ticketStatusColor = (s) =>
+    ({
+      open: "#f0c040",
+      in_progress: "#00d4ff",
+      resolved: "#00ff88",
+      closed: "#666",
+    })[s] || "#a0a0c0";
+
+  const inp = {
+    style: {
+      padding: "10px 14px",
+      background: "var(--card)",
+      border: "1px solid var(--border)",
+      borderRadius: "8px",
+      color: "var(--text-primary)",
+      fontSize: "0.9rem",
+      outline: "none",
+      width: "100%",
+      boxSizing: "border-box",
+    },
   };
+
+  const unreadCount = notifications.length;
+  const pendingPayments = payments.filter((p) =>
+    ["pending", "confirming"].includes(p.status),
+  ).length;
+  const openTickets = tickets.filter((t) => t.status === "open").length;
+  const pendingDeliveries = deliveries.filter(
+    (d) => d.status === "pending",
+  ).length;
 
   return (
     <div
@@ -349,55 +350,47 @@ export default function AdminPanel() {
         padding: "1.5rem",
       }}
     >
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{ marginBottom: "2rem" }}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "2rem",
+          }}
         >
-          <div
+          <div>
+            <h1 style={{ fontSize: "1.8rem", fontWeight: 900 }}>
+              🛡️ Admin Panel
+            </h1>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+              {user?.username} ·{" "}
+              <span style={{ color: "var(--gold)" }}>{user?.role}</span>
+            </p>
+          </div>
+          <button
+            onClick={fetchAll}
             style={{
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: "10px",
+              padding: "10px",
+              cursor: "pointer",
+              color: "var(--text-secondary)",
               display: "flex",
-              justifyContent: "space-between",
               alignItems: "center",
             }}
           >
-            <div>
-              <h1 style={{ fontSize: "1.8rem", fontWeight: 900 }}>
-                🛡️ Admin Panel
-              </h1>
-              <p
-                style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}
-              >
-                Logged in as{" "}
-                <span style={{ color: "var(--gold)" }}>{user?.username}</span> ·{" "}
-                {user?.role}
-              </p>
-            </div>
-            <button
-              onClick={fetchPayments}
-              style={{
-                background: "var(--card)",
-                border: "1px solid var(--border)",
-                borderRadius: "10px",
-                padding: "10px",
-                cursor: "pointer",
-                color: "var(--text-secondary)",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <RefreshCw size={16} />
-            </button>
-          </div>
-        </motion.div>
+            <RefreshCw size={16} />
+          </button>
+        </div>
 
         {/* Stats */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gridTemplateColumns: "repeat(4,1fr)",
             gap: "1rem",
             marginBottom: "2rem",
           }}
@@ -405,29 +398,31 @@ export default function AdminPanel() {
           {[
             {
               label: "Pending Payments",
-              value: payments.filter((p) => p.status === "pending").length,
+              value: pendingPayments,
               color: "#f0c040",
+              icon: "💰",
             },
             {
-              label: "Awaiting Confirm",
-              value: payments.filter((p) => p.status === "confirming").length,
+              label: "Open Tickets",
+              value: openTickets,
               color: "#00d4ff",
+              icon: "🎫",
             },
             {
-              label: "Total Requests",
-              value: payments.length,
-              color: "#00ff88",
+              label: "Prize Deliveries",
+              value: pendingDeliveries,
+              color: "#c084fc",
+              icon: "🏆",
             },
             {
               label: "Notifications",
-              value: notifications.length,
-              color: "#c084fc",
+              value: unreadCount,
+              color: "#00ff88",
+              icon: "🔔",
             },
           ].map((s) => (
-            <motion.div
+            <div
               key={s.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
               style={{
                 background: "var(--card)",
                 border: "1px solid var(--border)",
@@ -436,213 +431,126 @@ export default function AdminPanel() {
                 textAlign: "center",
               }}
             >
-              <p style={{ color: s.color, fontWeight: 900, fontSize: "2rem" }}>
+              <div style={{ fontSize: "1.5rem", marginBottom: "4px" }}>
+                {s.icon}
+              </div>
+              <p
+                style={{
+                  color: s.color,
+                  fontWeight: 900,
+                  fontSize: "2rem",
+                  lineHeight: 1,
+                }}
+              >
                 {s.value}
               </p>
-              <p style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>
+              <p
+                style={{
+                  color: "var(--text-secondary)",
+                  fontSize: "0.78rem",
+                  marginTop: "4px",
+                }}
+              >
                 {s.label}
               </p>
-            </motion.div>
+            </div>
           ))}
         </div>
 
-        {/* Invite Admin — super admin only */}
-        {user?.role === "super_admin" && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            style={{
-              background: "var(--card)",
-              border: "1px solid rgba(240,192,64,0.2)",
-              borderRadius: "16px",
-              padding: "1.5rem",
-              marginBottom: "1.5rem",
-            }}
-          >
-            <h3
-              style={{
-                fontWeight: 700,
-                marginBottom: "1rem",
-                fontSize: "1rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <Shield size={16} color="var(--gold)" /> Invite New Admin
-            </h3>
-            <p
-              style={{
-                color: "var(--text-secondary)",
-                fontSize: "0.85rem",
-                marginBottom: "1rem",
-              }}
-            >
-              Generate a one-time invite code. Valid for 48 hours. Share it with
-              the new admin and direct them to{" "}
-              <span style={{ color: "#00d4ff" }}>/register-admin</span>
-            </p>
-
-            {inviteCode ? (
-              <div
-                style={{
-                  background: "rgba(240,192,64,0.08)",
-                  border: "1px solid rgba(240,192,64,0.3)",
-                  borderRadius: "10px",
-                  padding: "1rem",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "8px",
-                }}
-              >
-                <div>
-                  <p
-                    style={{
-                      color: "var(--text-secondary)",
-                      fontSize: "0.8rem",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Share this code:
-                  </p>
-                  <p
-                    style={{
-                      color: "var(--gold)",
-                      fontFamily: "monospace",
-                      fontWeight: 800,
-                      fontSize: "1.1rem",
-                      letterSpacing: "2px",
-                    }}
-                  >
-                    {inviteCode}
-                  </p>
-                  <p
-                    style={{
-                      color: "var(--text-secondary)",
-                      fontSize: "0.75rem",
-                      marginTop: "4px",
-                    }}
-                  >
-                    Register at:{" "}
-                    <span style={{ color: "#00d4ff" }}>/register-admin</span>
-                  </p>
-                </div>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(inviteCode);
-                      toast.success("Copied!");
-                    }}
-                    style={{
-                      background: "rgba(240,192,64,0.2)",
-                      border: "1px solid rgba(240,192,64,0.3)",
-                      borderRadius: "8px",
-                      padding: "8px 16px",
-                      cursor: "pointer",
-                      color: "var(--gold)",
-                      fontWeight: 600,
-                      fontSize: "0.85rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    <Copy size={14} /> Copy
-                  </button>
-                  <button
-                    onClick={() => setInviteCode(null)}
-                    style={{
-                      background: "none",
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      padding: "8px 16px",
-                      cursor: "pointer",
-                      color: "var(--text-secondary)",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    New Code
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={handleGenerateInvite}
-                disabled={generatingInvite}
-                style={{
-                  background: "linear-gradient(135deg, #f0c040, #c9a227)",
-                  border: "none",
-                  borderRadius: "10px",
-                  padding: "10px 20px",
-                  color: "#000",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  fontSize: "0.9rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <Shield size={14} />{" "}
-                {generatingInvite ? "Generating..." : "Generate Invite Code"}
-              </button>
-            )}
-          </motion.div>
-        )}
-
-        {/* Tab switcher */}
-        <div style={{ display: "flex", gap: "8px", marginBottom: "1.5rem" }}>
-          {[
-            { key: "payments", label: "💰 Payments", count: payments.length },
-            {
-              key: "tickets",
-              label: "🎫 Support",
-              count: tickets.filter((t) => t.status === "open").length,
-            },
-          ].map((tab) => (
+        {/* Tabs */}
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            marginBottom: "1.5rem",
+            borderBottom: "1px solid var(--border)",
+            paddingBottom: "0",
+          }}
+        >
+          {TABS.map((tab) => (
             <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
               style={{
                 padding: "10px 20px",
-                borderRadius: "10px",
+                border: "none",
                 cursor: "pointer",
-                fontWeight: 700,
                 background:
-                  activeTab === tab.key ? "var(--gold)" : "var(--card)",
-                color: activeTab === tab.key ? "#000" : "var(--text-secondary)",
-                border:
-                  activeTab === tab.key ? "none" : "1px solid var(--border)",
+                  activeTab === tab.id ? "var(--gold)" : "transparent",
+                color: activeTab === tab.id ? "#000" : "var(--text-secondary)",
+                fontWeight: activeTab === tab.id ? 700 : 400,
+                borderRadius: "8px 8px 0 0",
                 fontSize: "0.9rem",
                 display: "flex",
                 alignItems: "center",
-                gap: "8px",
+                gap: "6px",
+                borderBottom:
+                  activeTab === tab.id
+                    ? "2px solid var(--gold)"
+                    : "2px solid transparent",
               }}
             >
-              {tab.label}
-              {tab.count > 0 && (
+              {tab.icon} {tab.label}
+              {tab.id === "payments" && pendingPayments > 0 && (
                 <span
                   style={{
-                    background:
-                      activeTab === tab.key ? "rgba(0,0,0,0.2)" : "var(--gold)",
-                    color: activeTab === tab.key ? "#000" : "#000",
-                    borderRadius: "50px",
-                    padding: "1px 8px",
-                    fontSize: "0.75rem",
-                    fontWeight: 800,
+                    background: "#ff4444",
+                    color: "#fff",
+                    borderRadius: "50%",
+                    width: "18px",
+                    height: "18px",
+                    fontSize: "0.65rem",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 700,
                   }}
                 >
-                  {tab.count}
+                  {pendingPayments}
+                </span>
+              )}
+              {tab.id === "tickets" && openTickets > 0 && (
+                <span
+                  style={{
+                    background: "#ff4444",
+                    color: "#fff",
+                    borderRadius: "50%",
+                    width: "18px",
+                    height: "18px",
+                    fontSize: "0.65rem",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 700,
+                  }}
+                >
+                  {openTickets}
+                </span>
+              )}
+              {tab.id === "deliveries" && pendingDeliveries > 0 && (
+                <span
+                  style={{
+                    background: "#ff4444",
+                    color: "#fff",
+                    borderRadius: "50%",
+                    width: "18px",
+                    height: "18px",
+                    fontSize: "0.65rem",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 700,
+                  }}
+                >
+                  {pendingDeliveries}
                 </span>
               )}
             </button>
           ))}
         </div>
 
-        {/* Tickets panel */}
-        {activeTab === "tickets" && (
+        {/* ── PAYMENTS TAB ── */}
+        {activeTab === "payments" && (
           <div
             style={{
               background: "var(--card)",
@@ -651,54 +559,18 @@ export default function AdminPanel() {
               padding: "1.5rem",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "1.5rem",
-                flexWrap: "wrap",
-                gap: "8px",
-              }}
-            >
-              <h3 style={{ fontWeight: 800, fontSize: "1.1rem" }}>
-                Support Tickets
-              </h3>
-              <div style={{ display: "flex", gap: "6px" }}>
-                {["open", "in_progress", "resolved", "all"].map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setTicketFilter(f)}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: "8px",
-                      cursor: "pointer",
-                      background:
-                        ticketFilter === f
-                          ? "rgba(240,192,64,0.2)"
-                          : "var(--navy)",
-                      border:
-                        ticketFilter === f
-                          ? "1px solid var(--gold)"
-                          : "1px solid var(--border)",
-                      color:
-                        ticketFilter === f
-                          ? "var(--gold)"
-                          : "var(--text-secondary)",
-                      fontSize: "0.78rem",
-                      fontWeight: 600,
-                      textTransform: "capitalize",
-                    }}
-                  >
-                    {f.replace("_", " ")}
-                  </button>
-                ))}
+            <h3 style={{ fontWeight: 800, marginBottom: "1.5rem" }}>
+              Payment Requests
+            </h3>
+            {loading ? (
+              <div style={{ textAlign: "center", padding: "3rem" }}>
+                <RefreshCw
+                  size={24}
+                  color="var(--gold)"
+                  style={{ animation: "spin 1s linear infinite" }}
+                />
               </div>
-            </div>
-
-            {tickets.filter(
-              (t) => ticketFilter === "all" || t.status === ticketFilter,
-            ).length === 0 ? (
+            ) : payments.length === 0 ? (
               <div
                 style={{
                   textAlign: "center",
@@ -706,10 +578,7 @@ export default function AdminPanel() {
                   color: "var(--text-secondary)",
                 }}
               >
-                <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>
-                  🎫
-                </div>
-                No {ticketFilter} tickets
+                ✅ No pending payments
               </div>
             ) : (
               <div
@@ -719,724 +588,1300 @@ export default function AdminPanel() {
                   gap: "1rem",
                 }}
               >
-                {tickets
-                  .filter(
-                    (t) => ticketFilter === "all" || t.status === ticketFilter,
-                  )
-                  .map((ticket) => {
-                    const statusColors = {
-                      open: "#ff4444",
-                      in_progress: "#f0c040",
-                      resolved: "#00ff88",
-                      closed: "#666",
-                    };
-                    const catIcons = {
-                      failed_transaction: "❌",
-                      pending_payment: "⏳",
-                      withdrawal: "💸",
-                      prize: "🎁",
-                      account: "👤",
-                      other: "💬",
-                    };
-
-                    return (
-                      <div
-                        key={ticket.id}
-                        style={{
-                          background: "var(--navy)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "14px",
-                          padding: "1.5rem",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
-                            marginBottom: "1rem",
-                            flexWrap: "wrap",
-                            gap: "8px",
-                          }}
-                        >
-                          <div>
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                marginBottom: "4px",
-                              }}
-                            >
-                              <span>{catIcons[ticket.category] || "💬"}</span>
-                              <span style={{ fontWeight: 700 }}>
-                                {ticket.name}
-                              </span>
-                              <span
-                                style={{
-                                  color: "var(--text-secondary)",
-                                  fontSize: "0.85rem",
-                                }}
-                              >
-                                {ticket.email}
-                              </span>
-                            </div>
-                            <p
-                              style={{
-                                color: "var(--gold)",
-                                fontWeight: 600,
-                                margin: "0 0 4px",
-                              }}
-                            >
-                              {ticket.subject}
-                            </p>
-                            {ticket.payment_reference && (
-                              <p
-                                style={{
-                                  color: "var(--text-secondary)",
-                                  fontSize: "0.8rem",
-                                  margin: 0,
-                                }}
-                              >
-                                Ref:{" "}
-                                <span
-                                  style={{
-                                    color: "#00d4ff",
-                                    fontFamily: "monospace",
-                                  }}
-                                >
-                                  {ticket.payment_reference}
-                                </span>
-                              </p>
-                            )}
-                          </div>
-                          <div style={{ textAlign: "right" }}>
-                            <span
-                              style={{
-                                background: statusColors[ticket.status] + "15",
-                                color: statusColors[ticket.status],
-                                padding: "4px 10px",
-                                borderRadius: "50px",
-                                fontSize: "0.75rem",
-                                fontWeight: 700,
-                                display: "block",
-                                marginBottom: "4px",
-                              }}
-                            >
-                              {ticket.status.replace("_", " ").toUpperCase()}
-                            </span>
-                            <span
-                              style={{
-                                color: "var(--text-secondary)",
-                                fontSize: "0.75rem",
-                              }}
-                            >
-                              {new Date(ticket.created_at).toLocaleDateString(
-                                "en-US",
-                                {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                },
-                              )}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Message */}
-                        <div
-                          style={{
-                            background: "var(--card)",
-                            borderRadius: "8px",
-                            padding: "12px",
-                            marginBottom: "1rem",
-                            color: "var(--text-secondary)",
-                            fontSize: "0.88rem",
-                            lineHeight: 1.6,
-                          }}
-                        >
-                          {ticket.message}
-                        </div>
-
-                        {/* Status update */}
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "8px",
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          {["in_progress", "resolved", "closed"].map((s) => (
-                            <button
-                              key={s}
-                              onClick={async () => {
-                                try {
-                                  await api.patch(`/support/${ticket.id}`, {
-                                    status: s,
-                                  });
-                                  toast.success(
-                                    `Ticket marked as ${s.replace("_", " ")}`,
-                                  );
-                                  fetchTickets();
-                                } catch {
-                                  toast.error("Could not update ticket");
-                                }
-                              }}
-                              disabled={ticket.status === s}
-                              style={{
-                                padding: "7px 14px",
-                                borderRadius: "8px",
-                                cursor:
-                                  ticket.status === s ? "default" : "pointer",
-                                background:
-                                  ticket.status === s
-                                    ? "rgba(255,255,255,0.05)"
-                                    : statusColors[s] + "15",
-                                border: `1px solid ${ticket.status === s ? "var(--border)" : statusColors[s] + "40"}`,
-                                color:
-                                  ticket.status === s
-                                    ? "var(--text-secondary)"
-                                    : statusColors[s],
-                                fontSize: "0.8rem",
-                                fontWeight: 600,
-                                textTransform: "capitalize",
-                              }}
-                            >
-                              {s.replace("_", " ")}
-                            </button>
-                          ))}
-
-                          {/* Reply via email */}
-                          <a
-                            href={`mailto:${ticket.email}?subject=Re: ${encodeURIComponent(ticket.subject)} [#${ticket.id.slice(0, 8).toUpperCase()}]`}
-                            style={{
-                              padding: "7px 14px",
-                              borderRadius: "8px",
-                              background: "rgba(0,212,255,0.1)",
-                              border: "1px solid rgba(0,212,255,0.3)",
-                              color: "#00d4ff",
-                              fontSize: "0.8rem",
-                              fontWeight: 600,
-                              textDecoration: "none",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                            }}
-                          >
-                            📧 Reply via Email
-                          </a>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Payments list */}
-        <div
-          style={{
-            background: "var(--card)",
-            border: "1px solid var(--border)",
-            borderRadius: "20px",
-            padding: "1.5rem",
-          }}
-        >
-          <h3
-            style={{
-              fontWeight: 800,
-              marginBottom: "1.5rem",
-              fontSize: "1.1rem",
-            }}
-          >
-            Payment Requests
-          </h3>
-
-          {loading ? (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "3rem",
-                color: "var(--text-secondary)",
-              }}
-            >
-              <RefreshCw
-                size={24}
-                style={{ animation: "spin 1s linear infinite" }}
-              />
-            </div>
-          ) : payments.length === 0 ? (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "3rem",
-                color: "var(--text-secondary)",
-              }}
-            >
-              <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>✅</div>
-              No pending payments
-            </div>
-          ) : (
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
-            >
-              {payments.map((payment) => (
-                <motion.div
-                  key={payment.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  style={{
-                    background: "var(--navy)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "14px",
-                    padding: "1.5rem",
-                  }}
-                >
-                  {/* Payment header */}
+                {payments.map((payment) => (
                   <div
+                    key={payment.id}
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      marginBottom: "1rem",
-                      flexWrap: "wrap",
-                      gap: "8px",
+                      background: "var(--navy)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "14px",
+                      padding: "1.5rem",
                     }}
                   >
-                    <div>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        <span style={{ fontSize: "1.2rem" }}>
-                          {methodIcon(payment.payment_method)}
-                        </span>
-                        <span style={{ fontWeight: 700 }}>
-                          {payment.username}
-                        </span>
-                        <span
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: "1rem",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                      }}
+                    >
+                      <div>
+                        <div
                           style={{
-                            color: "var(--text-secondary)",
-                            fontSize: "0.85rem",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            marginBottom: "4px",
                           }}
                         >
-                          {payment.email}
-                        </span>
-                      </div>
-                      <p
-                        style={{
-                          color: "var(--text-secondary)",
-                          fontSize: "0.8rem",
-                        }}
-                      >
-                        Ref:{" "}
-                        <span
-                          style={{
-                            color: "var(--gold)",
-                            fontFamily: "monospace",
-                          }}
-                        >
-                          {payment.payment_reference}
-                        </span>
-                      </p>
-
-                      {/* Gift card details */}
-                      {payment.payment_method === "gift_card" &&
-                        payment.gift_card_details && (
-                          <div
+                          <span style={{ fontSize: "1.2rem" }}>
+                            {methodIcon(payment.payment_method)}
+                          </span>
+                          <span style={{ fontWeight: 700 }}>
+                            {payment.username}
+                          </span>
+                          <span
                             style={{
-                              background: "rgba(240,192,64,0.06)",
-                              border: "1px solid rgba(240,192,64,0.2)",
-                              borderRadius: "8px",
-                              padding: "10px 14px",
-                              marginTop: "8px",
-                              fontSize: "0.82rem",
+                              color: "var(--text-secondary)",
+                              fontSize: "0.85rem",
                             }}
                           >
-                            <p
+                            {payment.email}
+                          </span>
+                        </div>
+                        <p
+                          style={{
+                            color: "var(--text-secondary)",
+                            fontSize: "0.8rem",
+                          }}
+                        >
+                          Ref:{" "}
+                          <span
+                            style={{
+                              color: "var(--gold)",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {payment.payment_reference}
+                          </span>
+                        </p>
+                        {/* Gift card details */}
+                        {payment.payment_method === "gift_card" &&
+                          payment.gift_card_details && (
+                            <div
                               style={{
-                                color: "var(--gold)",
-                                fontWeight: 700,
-                                marginBottom: "6px",
+                                background: "rgba(240,192,64,0.06)",
+                                border: "1px solid rgba(240,192,64,0.2)",
+                                borderRadius: "8px",
+                                padding: "10px",
+                                marginTop: "8px",
+                                fontSize: "0.82rem",
                               }}
                             >
-                              🎁 Gift Card Details
-                            </p>
-                            {payment.gift_card_image_url && (
-                              <a
-                                href={payment.gift_card_image_url}
-                                target="_blank"
-                                rel="noreferrer"
+                              <p
                                 style={{
-                                  display: "block",
-                                  marginBottom: "8px",
+                                  color: "var(--gold)",
+                                  fontWeight: 700,
+                                  marginBottom: "4px",
                                 }}
                               >
+                                🎁 Gift Card
+                              </p>
+                              {payment.gift_card_image_url && (
                                 <img
                                   src={payment.gift_card_image_url}
                                   alt="Gift card"
                                   style={{
                                     maxWidth: "200px",
                                     borderRadius: "6px",
-                                    border: "1px solid var(--border)",
+                                    marginBottom: "4px",
                                   }}
                                 />
-                              </a>
-                            )}
-                            {Object.entries(
-                              typeof payment.gift_card_details === "string"
-                                ? JSON.parse(payment.gift_card_details)
-                                : payment.gift_card_details,
-                            )
-                              .filter(([, v]) => v)
-                              .map(([k, v]) => (
-                                <p
-                                  key={k}
-                                  style={{
-                                    color: "var(--text-secondary)",
-                                    marginBottom: "2px",
-                                  }}
-                                >
-                                  <span style={{ color: "#888" }}>
-                                    {k.replace(/_/g, " ")}:{" "}
-                                  </span>
-                                  <span
+                              )}
+                              {Object.entries(
+                                typeof payment.gift_card_details === "string"
+                                  ? JSON.parse(payment.gift_card_details)
+                                  : payment.gift_card_details,
+                              )
+                                .filter(([, v]) => v)
+                                .map(([k, v]) => (
+                                  <p
+                                    key={k}
                                     style={{
-                                      color: "var(--text-primary)",
-                                      fontWeight: 600,
-                                      fontFamily: "monospace",
+                                      color: "var(--text-secondary)",
+                                      marginBottom: "2px",
                                     }}
                                   >
-                                    {v}
-                                  </span>
-                                </p>
-                              ))}
-                          </div>
-                        )}
+                                    <span style={{ color: "#888" }}>
+                                      {k.replace(/_/g, " ")}:{" "}
+                                    </span>
+                                    <span
+                                      style={{
+                                        color: "var(--text-primary)",
+                                        fontFamily: "monospace",
+                                      }}
+                                    >
+                                      {v}
+                                    </span>
+                                  </p>
+                                ))}
+                            </div>
+                          )}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <p style={{ fontWeight: 900, fontSize: "1.3rem" }}>
+                          ${parseFloat(payment.amount).toLocaleString()}
+                        </p>
+                        <span
+                          style={{
+                            background: statusColor(payment.status) + "15",
+                            color: statusColor(payment.status),
+                            padding: "3px 10px",
+                            borderRadius: "50px",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {payment.status.toUpperCase()}
+                        </span>
+                      </div>
                     </div>
 
-                    <div style={{ textAlign: "right" }}>
-                      <p
+                    {/* Send details */}
+                    {payment.status === "pending" && (
+                      <div
                         style={{
-                          fontWeight: 900,
-                          fontSize: "1.3rem",
-                          color: "var(--text-primary)",
+                          borderTop: "1px solid var(--border)",
+                          paddingTop: "1rem",
                         }}
                       >
-                        ${parseFloat(payment.amount).toLocaleString()}
+                        {selectedPayment === payment.id ? (
+                          <div>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "8px",
+                                marginBottom: "1rem",
+                              }}
+                            >
+                              {payment.payment_method === "bank_transfer" &&
+                                [
+                                  "account_name",
+                                  "account_number",
+                                  "bank",
+                                  "routing_number",
+                                ].map((f) => (
+                                  <input
+                                    key={f}
+                                    {...inp}
+                                    placeholder={f
+                                      .replace(/_/g, " ")
+                                      .replace(/\b\w/g, (l) => l.toUpperCase())}
+                                    onChange={(e) =>
+                                      setDetailsForm((p) => ({
+                                        ...p,
+                                        [payment.id]: {
+                                          ...p[payment.id],
+                                          [f]: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                  />
+                                ))}
+                              {payment.payment_method === "crypto" &&
+                                ["btc_address", "eth_address", "network"].map(
+                                  (f) => (
+                                    <input
+                                      key={f}
+                                      {...inp}
+                                      placeholder={f
+                                        .replace(/_/g, " ")
+                                        .toUpperCase()}
+                                      onChange={(e) =>
+                                        setDetailsForm((p) => ({
+                                          ...p,
+                                          [payment.id]: {
+                                            ...p[payment.id],
+                                            [f]: e.target.value,
+                                          },
+                                        }))
+                                      }
+                                    />
+                                  ),
+                                )}
+                              {payment.payment_method === "zelle" &&
+                                [
+                                  "zelle_email",
+                                  "zelle_phone",
+                                  "recipient_name",
+                                ].map((f) => (
+                                  <input
+                                    key={f}
+                                    {...inp}
+                                    placeholder={f
+                                      .replace(/_/g, " ")
+                                      .replace(/\b\w/g, (l) => l.toUpperCase())}
+                                    onChange={(e) =>
+                                      setDetailsForm((p) => ({
+                                        ...p,
+                                        [payment.id]: {
+                                          ...p[payment.id],
+                                          [f]: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                  />
+                                ))}
+                              {["card", "apple_pay"].includes(
+                                payment.payment_method,
+                              ) && (
+                                <input
+                                  {...inp}
+                                  placeholder="Payment link or instructions"
+                                  onChange={(e) =>
+                                    setDetailsForm((p) => ({
+                                      ...p,
+                                      [payment.id]: {
+                                        ...p[payment.id],
+                                        instructions: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                />
+                              )}
+                            </div>
+                            <div style={{ display: "flex", gap: "8px" }}>
+                              <button
+                                onClick={() => handleSendDetails(payment.id)}
+                                disabled={sendingDetails}
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg,#f0c040,#c9a227)",
+                                  border: "none",
+                                  borderRadius: "8px",
+                                  padding: "10px 16px",
+                                  color: "#000",
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                  fontSize: "0.85rem",
+                                }}
+                              >
+                                <Send size={14} />{" "}
+                                {sendingDetails ? "Sending..." : "Send Details"}
+                              </button>
+                              <button
+                                onClick={() => setSelectedPayment(null)}
+                                style={{
+                                  background: "none",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: "8px",
+                                  padding: "10px 16px",
+                                  color: "var(--text-secondary)",
+                                  cursor: "pointer",
+                                  fontSize: "0.85rem",
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setSelectedPayment(payment.id)}
+                            style={{
+                              background: "rgba(240,192,64,0.1)",
+                              border: "1px solid rgba(240,192,64,0.3)",
+                              borderRadius: "8px",
+                              padding: "10px 16px",
+                              color: "var(--gold)",
+                              cursor: "pointer",
+                              fontWeight: 600,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            <Send size={14} /> Send Payment Details
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Approve/Reject */}
+                    {payment.status === "confirming" && (
+                      <div
+                        style={{
+                          borderTop: "1px solid var(--border)",
+                          paddingTop: "1rem",
+                        }}
+                      >
+                        <p
+                          style={{
+                            color: "#00d4ff",
+                            fontSize: "0.85rem",
+                            marginBottom: "0.75rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          ✅ User confirmed payment sent. Verify and approve or
+                          reject.
+                        </p>
+                        <input
+                          {...inp}
+                          placeholder="Rejection note (optional)"
+                          value={rejectNote}
+                          onChange={(e) => setRejectNote(e.target.value)}
+                          style={{ ...inp.style, marginBottom: "0.75rem" }}
+                        />
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button
+                            onClick={() => handleApprove(payment.id)}
+                            style={{
+                              background:
+                                "linear-gradient(135deg,#00ff88,#00cc66)",
+                              border: "none",
+                              borderRadius: "8px",
+                              padding: "10px 20px",
+                              color: "#000",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              fontSize: "0.85rem",
+                              flex: 1,
+                              justifyContent: "center",
+                            }}
+                          >
+                            <CheckCircle size={16} /> Approve & Credit
+                          </button>
+                          <button
+                            onClick={() => handleReject(payment.id)}
+                            style={{
+                              background: "rgba(255,68,68,0.1)",
+                              border: "1px solid rgba(255,68,68,0.3)",
+                              borderRadius: "8px",
+                              padding: "10px 20px",
+                              color: "#ff4444",
+                              cursor: "pointer",
+                              fontWeight: 700,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            <XCircle size={16} /> Reject
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── SUPPORT TICKETS TAB ── */}
+        {activeTab === "tickets" && (
+          <div
+            style={{
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: "20px",
+              padding: "1.5rem",
+            }}
+          >
+            <h3 style={{ fontWeight: 800, marginBottom: "1.5rem" }}>
+              Support Tickets
+            </h3>
+            {tickets.length === 0 ? (
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "3rem",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                ✅ No tickets
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.75rem",
+                }}
+              >
+                {tickets.map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => openTicket(t)}
+                    style={{
+                      background: "var(--navy)",
+                      border: `1px solid var(--border)`,
+                      borderLeft: `4px solid ${ticketStatusColor(t.status)}`,
+                      borderRadius: "12px",
+                      padding: "1rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div>
+                        <p style={{ fontWeight: 700, marginBottom: "2px" }}>
+                          {t.subject}
+                        </p>
+                        <p
+                          style={{
+                            color: "var(--text-secondary)",
+                            fontSize: "0.8rem",
+                          }}
+                        >
+                          {t.username} · {t.ticket_number} ·{" "}
+                          {new Date(t.created_at).toLocaleDateString()}
+                        </p>
+                        {t.game_played && (
+                          <p
+                            style={{
+                              color: "var(--text-secondary)",
+                              fontSize: "0.78rem",
+                            }}
+                          >
+                            Game: {t.game_played}{" "}
+                            {t.amount ? `· $${t.amount}` : ""}
+                          </p>
+                        )}
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "flex-end",
+                          gap: "4px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            background: ticketStatusColor(t.status) + "20",
+                            color: ticketStatusColor(t.status),
+                            padding: "2px 10px",
+                            borderRadius: "50px",
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {t.status.replace("_", " ").toUpperCase()}
+                        </span>
+                        <span
+                          style={{
+                            color: "var(--text-secondary)",
+                            fontSize: "0.75rem",
+                          }}
+                        >
+                          {t.priority}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Ticket detail modal */}
+            <AnimatePresence>
+              {selectedTicket && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{
+                    position: "fixed",
+                    inset: 0,
+                    background: "rgba(0,0,0,0.85)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 1000,
+                    padding: "1rem",
+                  }}
+                  onClick={() => setSelectedTicket(null)}
+                >
+                  <motion.div
+                    initial={{ scale: 0.95 }}
+                    animate={{ scale: 1 }}
+                    style={{
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "20px",
+                      padding: "2rem",
+                      width: "100%",
+                      maxWidth: "600px",
+                      maxHeight: "80vh",
+                      overflow: "auto",
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <div>
+                        <h3 style={{ fontWeight: 800 }}>
+                          {selectedTicket.subject}
+                        </h3>
+                        <p
+                          style={{
+                            color: "var(--text-secondary)",
+                            fontSize: "0.8rem",
+                          }}
+                        >
+                          {selectedTicket.ticket_number} ·{" "}
+                          {selectedTicket.username}
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        {["open", "in_progress", "resolved", "closed"].map(
+                          (s) => (
+                            <button
+                              key={s}
+                              onClick={() =>
+                                handleUpdateTicket(selectedTicket.id, s)
+                              }
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: "6px",
+                                border: "1px solid var(--border)",
+                                background:
+                                  selectedTicket.status === s
+                                    ? "var(--gold)"
+                                    : "transparent",
+                                color:
+                                  selectedTicket.status === s
+                                    ? "#000"
+                                    : "var(--text-secondary)",
+                                cursor: "pointer",
+                                fontSize: "0.72rem",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {s.replace("_", " ")}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Ticket details */}
+                    <div
+                      style={{
+                        background: "rgba(255,255,255,0.04)",
+                        borderRadius: "10px",
+                        padding: "1rem",
+                        marginBottom: "1rem",
+                        fontSize: "0.82rem",
+                      }}
+                    >
+                      {[
+                        ["Transaction", selectedTicket.transaction_type],
+                        ["Game", selectedTicket.game_played],
+                        [
+                          "Amount",
+                          selectedTicket.amount
+                            ? `$${selectedTicket.amount}`
+                            : null,
+                        ],
+                      ]
+                        .filter(([, v]) => v)
+                        .map(([k, v]) => (
+                          <span
+                            key={k}
+                            style={{
+                              marginRight: "1rem",
+                              color: "var(--text-secondary)",
+                            }}
+                          >
+                            {k}:{" "}
+                            <span
+                              style={{
+                                color: "var(--text-primary)",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {v}
+                            </span>
+                          </span>
+                        ))}
+                    </div>
+
+                    <div
+                      style={{
+                        background: "var(--navy)",
+                        borderRadius: "10px",
+                        padding: "1rem",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <p
+                        style={{
+                          color: "var(--gold)",
+                          fontSize: "0.78rem",
+                          fontWeight: 700,
+                          marginBottom: "6px",
+                        }}
+                      >
+                        Original Message
                       </p>
+                      <p
+                        style={{
+                          color: "var(--text-primary)",
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        {selectedTicket.message}
+                      </p>
+                    </div>
+
+                    {ticketReplies.map((r) => (
+                      <div
+                        key={r.id}
+                        style={{
+                          background: ["admin", "super_admin"].includes(
+                            r.sender_role,
+                          )
+                            ? "rgba(240,192,64,0.08)"
+                            : "var(--navy)",
+                          border: `1px solid ${["admin", "super_admin"].includes(r.sender_role) ? "rgba(240,192,64,0.3)" : "var(--border)"}`,
+                          borderRadius: "10px",
+                          padding: "1rem",
+                          marginBottom: "0.75rem",
+                        }}
+                      >
+                        <p
+                          style={{
+                            color: ["admin", "super_admin"].includes(
+                              r.sender_role,
+                            )
+                              ? "var(--gold)"
+                              : "#00d4ff",
+                            fontSize: "0.78rem",
+                            fontWeight: 700,
+                            marginBottom: "6px",
+                          }}
+                        >
+                          {["admin", "super_admin"].includes(r.sender_role)
+                            ? "🛡️ Admin"
+                            : "👤 " + r.username}{" "}
+                          · {new Date(r.created_at).toLocaleString()}
+                        </p>
+                        <p
+                          style={{
+                            color: "var(--text-primary)",
+                            fontSize: "0.9rem",
+                          }}
+                        >
+                          {r.message}
+                        </p>
+                      </div>
+                    ))}
+
+                    <textarea
+                      value={replyMsg}
+                      onChange={(e) => setReplyMsg(e.target.value)}
+                      placeholder="Type admin reply..."
+                      rows={3}
+                      style={{
+                        width: "100%",
+                        padding: "12px",
+                        background: "var(--navy)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "10px",
+                        color: "var(--text-primary)",
+                        fontSize: "0.9rem",
+                        outline: "none",
+                        resize: "vertical",
+                        boxSizing: "border-box",
+                        marginBottom: "8px",
+                      }}
+                    />
+                    <button
+                      onClick={handleReplyTicket}
+                      disabled={submitting || !replyMsg.trim()}
+                      style={{
+                        padding: "10px 20px",
+                        background: "linear-gradient(135deg,#f0c040,#c9a227)",
+                        border: "none",
+                        borderRadius: "8px",
+                        color: "#000",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <Send size={14} />{" "}
+                      {submitting ? "Sending..." : "Send Reply"}
+                    </button>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
+        {/* ── PRIZE DELIVERIES TAB ── */}
+        {activeTab === "deliveries" && (
+          <div
+            style={{
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: "20px",
+              padding: "1.5rem",
+            }}
+          >
+            <h3 style={{ fontWeight: 800, marginBottom: "1.5rem" }}>
+              Prize Delivery Requests
+            </h3>
+            {deliveries.length === 0 ? (
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "3rem",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                No delivery requests yet
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "1rem",
+                }}
+              >
+                {deliveries.map((d) => (
+                  <div
+                    key={d.id}
+                    style={{
+                      background: "var(--navy)",
+                      border: "1px solid rgba(192,132,252,0.3)",
+                      borderRadius: "14px",
+                      padding: "1.5rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <div>
+                        <p
+                          style={{
+                            fontWeight: 700,
+                            fontSize: "1.05rem",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          🏆 {d.prize_name || "Physical Prize"}
+                        </p>
+                        <p
+                          style={{
+                            color: "var(--text-secondary)",
+                            fontSize: "0.85rem",
+                          }}
+                        >
+                          {d.username} · {d.full_name}
+                        </p>
+                        <p
+                          style={{
+                            color: "var(--text-secondary)",
+                            fontSize: "0.82rem",
+                          }}
+                        >
+                          {d.email} · {d.phone}
+                        </p>
+                      </div>
                       <span
                         style={{
-                          background: statusColor(payment.status) + "15",
-                          color: statusColor(payment.status),
+                          background: "rgba(192,132,252,0.15)",
+                          color: "#c084fc",
                           padding: "3px 10px",
                           borderRadius: "50px",
                           fontSize: "0.75rem",
                           fontWeight: 700,
                         }}
                       >
-                        {payment.status.toUpperCase()}
+                        {(d.status || "pending").toUpperCase()}
                       </span>
                     </div>
-                  </div>
 
-                  {/* Send details — for pending payments */}
-                  {payment.status === "pending" && (
                     <div
                       style={{
-                        borderTop: "1px solid var(--border)",
-                        paddingTop: "1rem",
-                      }}
-                    >
-                      {selectedPayment === payment.id ? (
-                        <div>
-                          <p
-                            style={{
-                              color: "var(--text-secondary)",
-                              fontSize: "0.85rem",
-                              marginBottom: "0.75rem",
-                            }}
-                          >
-                            Send {payment.payment_method.replace("_", " ")}{" "}
-                            details to user:
-                          </p>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "8px",
-                              marginBottom: "1rem",
-                            }}
-                          >
-                            {payment.payment_method === "bank_transfer" &&
-                              [
-                                "account_name",
-                                "account_number",
-                                "bank",
-                                "routing_number",
-                              ].map((field) => (
-                                <input
-                                  key={field}
-                                  placeholder={field
-                                    .replace(/_/g, " ")
-                                    .replace(/\b\w/g, (l) => l.toUpperCase())}
-                                  onChange={(e) =>
-                                    setDetailsForm((prev) => ({
-                                      ...prev,
-                                      [payment.id]: {
-                                        ...prev[payment.id],
-                                        [field]: e.target.value,
-                                      },
-                                    }))
-                                  }
-                                  style={{
-                                    padding: "10px 14px",
-                                    background: "var(--card)",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: "8px",
-                                    color: "var(--text-primary)",
-                                    fontSize: "0.9rem",
-                                    outline: "none",
-                                  }}
-                                />
-                              ))}
-                            {payment.payment_method === "crypto" &&
-                              ["btc_address", "eth_address", "network"].map(
-                                (field) => (
-                                  <input
-                                    key={field}
-                                    placeholder={field
-                                      .replace(/_/g, " ")
-                                      .toUpperCase()}
-                                    onChange={(e) =>
-                                      setDetailsForm((prev) => ({
-                                        ...prev,
-                                        [payment.id]: {
-                                          ...prev[payment.id],
-                                          [field]: e.target.value,
-                                        },
-                                      }))
-                                    }
-                                    style={{
-                                      padding: "10px 14px",
-                                      background: "var(--card)",
-                                      border: "1px solid var(--border)",
-                                      borderRadius: "8px",
-                                      color: "var(--text-primary)",
-                                      fontSize: "0.9rem",
-                                      outline: "none",
-                                    }}
-                                  />
-                                ),
-                              )}
-                            {payment.payment_method === "zelle" &&
-                              [
-                                "zelle_email",
-                                "zelle_phone",
-                                "recipient_name",
-                              ].map((field) => (
-                                <input
-                                  key={field}
-                                  placeholder={field
-                                    .replace(/_/g, " ")
-                                    .replace(/\b\w/g, (l) => l.toUpperCase())}
-                                  onChange={(e) =>
-                                    setDetailsForm((prev) => ({
-                                      ...prev,
-                                      [payment.id]: {
-                                        ...prev[payment.id],
-                                        [field]: e.target.value,
-                                      },
-                                    }))
-                                  }
-                                  style={{
-                                    padding: "10px 14px",
-                                    background: "var(--card)",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: "8px",
-                                    color: "var(--text-primary)",
-                                    fontSize: "0.9rem",
-                                    outline: "none",
-                                  }}
-                                />
-                              ))}
-                            {["card", "apple_pay"].includes(
-                              payment.payment_method,
-                            ) && (
-                              <input
-                                placeholder="Stripe payment link or instructions"
-                                onChange={(e) =>
-                                  setDetailsForm((prev) => ({
-                                    ...prev,
-                                    [payment.id]: {
-                                      ...prev[payment.id],
-                                      instructions: e.target.value,
-                                    },
-                                  }))
-                                }
-                                style={{
-                                  padding: "10px 14px",
-                                  background: "var(--card)",
-                                  border: "1px solid var(--border)",
-                                  borderRadius: "8px",
-                                  color: "var(--text-primary)",
-                                  fontSize: "0.9rem",
-                                  outline: "none",
-                                }}
-                              />
-                            )}
-                          </div>
-                          <div style={{ display: "flex", gap: "8px" }}>
-                            <button
-                              onClick={() => handleSendDetails(payment.id)}
-                              disabled={sendingDetails}
-                              style={{
-                                background:
-                                  "linear-gradient(135deg, #f0c040, #c9a227)",
-                                border: "none",
-                                borderRadius: "8px",
-                                padding: "10px 16px",
-                                color: "#000",
-                                fontWeight: 700,
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "6px",
-                                fontSize: "0.85rem",
-                              }}
-                            >
-                              <Send size={14} />{" "}
-                              {sendingDetails ? "Sending..." : "Send Details"}
-                            </button>
-                            <button
-                              onClick={() => setSelectedPayment(null)}
-                              style={{
-                                background: "none",
-                                border: "1px solid var(--border)",
-                                borderRadius: "8px",
-                                padding: "10px 16px",
-                                color: "var(--text-secondary)",
-                                cursor: "pointer",
-                                fontSize: "0.85rem",
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setSelectedPayment(payment.id)}
-                          style={{
-                            background: "rgba(240,192,64,0.1)",
-                            border: "1px solid rgba(240,192,64,0.3)",
-                            borderRadius: "8px",
-                            padding: "10px 16px",
-                            color: "var(--gold)",
-                            cursor: "pointer",
-                            fontWeight: 600,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            fontSize: "0.85rem",
-                          }}
-                        >
-                          <Send size={14} /> Send Payment Details
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Approve/Reject — for confirming payments */}
-                  {payment.status === "confirming" && (
-                    <div
-                      style={{
-                        borderTop: "1px solid var(--border)",
-                        paddingTop: "1rem",
+                        background: "rgba(255,255,255,0.04)",
+                        borderRadius: "10px",
+                        padding: "1rem",
+                        fontSize: "0.82rem",
+                        marginBottom: "1rem",
                       }}
                     >
                       <p
                         style={{
-                          color: "#00d4ff",
-                          fontSize: "0.85rem",
-                          marginBottom: "1rem",
+                          color: "var(--text-secondary)",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        📍 Delivery Address:
+                      </p>
+                      <p
+                        style={{
+                          color: "var(--text-primary)",
                           fontWeight: 600,
                         }}
                       >
-                        ✅ User says they've sent the payment. Verify and
-                        approve or reject.
+                        {d.address_line1}
+                        {d.address_line2 ? ", " + d.address_line2 : ""},{" "}
+                        {d.city}, {d.state} {d.postal_code}, {d.country}
                       </p>
-                      <input
-                        placeholder="Rejection note (optional)"
-                        value={rejectNote}
-                        onChange={(e) => setRejectNote(e.target.value)}
+                      <p
                         style={{
-                          width: "100%",
-                          padding: "10px 14px",
-                          marginBottom: "0.75rem",
-                          background: "var(--card)",
+                          color: "var(--text-secondary)",
+                          marginTop: "6px",
+                        }}
+                      >
+                        ID: {d.id_type} —{" "}
+                        <span
+                          style={{
+                            color: "var(--text-primary)",
+                            fontFamily: "monospace",
+                          }}
+                        >
+                          {d.id_number}
+                        </span>
+                      </p>
+                      {d.notes && (
+                        <p
+                          style={{
+                            color: "var(--text-secondary)",
+                            marginTop: "4px",
+                          }}
+                        >
+                          Notes: {d.notes}
+                        </p>
+                      )}
+                      {d.tracking_number && (
+                        <p
+                          style={{
+                            color: "#00ff88",
+                            marginTop: "4px",
+                            fontWeight: 600,
+                          }}
+                        >
+                          📦 Tracking: {d.tracking_number}
+                        </p>
+                      )}
+                    </div>
+
+                    <div
+                      style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}
+                    >
+                      {["pending", "processing", "shipped", "delivered"].map(
+                        (s) => (
+                          <button
+                            key={s}
+                            onClick={() => handleUpdateDelivery(d.id, s)}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: "8px",
+                              border: "1px solid var(--border)",
+                              background:
+                                d.status === s ? "#c084fc" : "transparent",
+                              color:
+                                d.status === s
+                                  ? "#000"
+                                  : "var(--text-secondary)",
+                              cursor: "pointer",
+                              fontSize: "0.78rem",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {s.charAt(0).toUpperCase() + s.slice(1)}
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ADMINS TAB ── */}
+        {activeTab === "admins" && (
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}
+          >
+            {/* Invite code generator */}
+            {user?.role === "super_admin" && (
+              <div
+                style={{
+                  background: "var(--card)",
+                  border: "1px solid rgba(240,192,64,0.3)",
+                  borderRadius: "20px",
+                  padding: "1.5rem",
+                }}
+              >
+                <h3
+                  style={{
+                    fontWeight: 800,
+                    marginBottom: "0.5rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <Shield size={18} color="var(--gold)" /> Invite New Admin
+                </h3>
+                <p
+                  style={{
+                    color: "var(--text-secondary)",
+                    fontSize: "0.85rem",
+                    marginBottom: "1.5rem",
+                  }}
+                >
+                  Generate a one-time invite code. New admin registers at{" "}
+                  <span style={{ color: "#00d4ff" }}>/register-admin</span>{" "}
+                  using this code. Code expires in 48 hours.
+                </p>
+
+                {inviteCode ? (
+                  <div
+                    style={{
+                      background: "rgba(240,192,64,0.08)",
+                      border: "1px solid rgba(240,192,64,0.3)",
+                      borderRadius: "12px",
+                      padding: "1.2rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "1rem",
+                    }}
+                  >
+                    <div>
+                      <p
+                        style={{
+                          color: "var(--text-secondary)",
+                          fontSize: "0.8rem",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Share this code with the new admin:
+                      </p>
+                      <p
+                        style={{
+                          color: "var(--gold)",
+                          fontFamily: "monospace",
+                          fontWeight: 900,
+                          fontSize: "1.3rem",
+                          letterSpacing: "3px",
+                        }}
+                      >
+                        {inviteCode}
+                      </p>
+                      <p
+                        style={{
+                          color: "var(--text-secondary)",
+                          fontSize: "0.75rem",
+                          marginTop: "4px",
+                        }}
+                      >
+                        Register link:{" "}
+                        <span style={{ color: "#00d4ff" }}>
+                          {window.location.origin}/register-admin
+                        </span>
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(inviteCode);
+                          toast.success("Code copied!");
+                        }}
+                        style={{
+                          background: "rgba(240,192,64,0.2)",
+                          border: "1px solid rgba(240,192,64,0.3)",
+                          borderRadius: "8px",
+                          padding: "8px 16px",
+                          cursor: "pointer",
+                          color: "var(--gold)",
+                          fontWeight: 600,
+                          fontSize: "0.85rem",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <Copy size={14} /> Copy Code
+                      </button>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            `${window.location.origin}/register-admin?code=${inviteCode}`,
+                          );
+                          toast.success("Link copied!");
+                        }}
+                        style={{
+                          background: "rgba(0,212,255,0.1)",
+                          border: "1px solid rgba(0,212,255,0.3)",
+                          borderRadius: "8px",
+                          padding: "8px 16px",
+                          cursor: "pointer",
+                          color: "#00d4ff",
+                          fontWeight: 600,
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        Copy Link
+                      </button>
+                      <button
+                        onClick={() => setInviteCode(null)}
+                        style={{
+                          background: "none",
                           border: "1px solid var(--border)",
                           borderRadius: "8px",
-                          color: "var(--text-primary)",
-                          fontSize: "0.9rem",
-                          outline: "none",
-                          boxSizing: "border-box",
+                          padding: "8px 16px",
+                          cursor: "pointer",
+                          color: "var(--text-secondary)",
+                          fontSize: "0.85rem",
                         }}
-                      />
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <button
-                          onClick={() => handleApprove(payment.id)}
-                          style={{
-                            background:
-                              "linear-gradient(135deg, #00ff88, #00cc66)",
-                            border: "none",
-                            borderRadius: "8px",
-                            padding: "10px 20px",
-                            color: "#000",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            fontSize: "0.85rem",
-                            flex: 1,
-                            justifyContent: "center",
-                          }}
-                        >
-                          <CheckCircle size={16} /> Approve & Credit Wallet
-                        </button>
-                        <button
-                          onClick={() => handleReject(payment.id)}
-                          style={{
-                            background: "rgba(255,68,68,0.1)",
-                            border: "1px solid rgba(255,68,68,0.3)",
-                            borderRadius: "8px",
-                            padding: "10px 20px",
-                            color: "#ff4444",
-                            cursor: "pointer",
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            fontSize: "0.85rem",
-                          }}
-                        >
-                          <XCircle size={16} /> Reject
-                        </button>
-                      </div>
+                      >
+                        New Code
+                      </button>
                     </div>
-                  )}
-                </motion.div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleGenerateInvite}
+                    disabled={generatingInvite}
+                    style={{
+                      background: "linear-gradient(135deg,#f0c040,#c9a227)",
+                      border: "none",
+                      borderRadius: "10px",
+                      padding: "12px 24px",
+                      color: "#000",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      fontSize: "0.9rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <Shield size={16} />{" "}
+                    {generatingInvite
+                      ? "Generating..."
+                      : "Generate Invite Code"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* How to add admin instructions */}
+            <div
+              style={{
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                borderRadius: "20px",
+                padding: "1.5rem",
+              }}
+            >
+              <h3 style={{ fontWeight: 800, marginBottom: "1rem" }}>
+                How to Add a New Admin
+              </h3>
+              {[
+                {
+                  step: "1",
+                  text: 'Click "Generate Invite Code" above to create a one-time code',
+                  color: "#f0c040",
+                },
+                {
+                  step: "2",
+                  text: "Copy the code and send it to the person you want to make admin",
+                  color: "#00d4ff",
+                },
+                {
+                  step: "3",
+                  text: "They go to /register-admin on the platform",
+                  color: "#00ff88",
+                },
+                {
+                  step: "4",
+                  text: "They fill in their details and paste the invite code",
+                  color: "#c084fc",
+                },
+                {
+                  step: "5",
+                  text: "Their account is created with admin role automatically — no OTP needed",
+                  color: "#f0c040",
+                },
+              ].map((s) => (
+                <div
+                  key={s.step}
+                  style={{
+                    display: "flex",
+                    gap: "1rem",
+                    alignItems: "flex-start",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "50%",
+                      background: s.color + "20",
+                      border: `1px solid ${s.color}`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: s.color,
+                        fontWeight: 700,
+                        fontSize: "0.8rem",
+                      }}
+                    >
+                      {s.step}
+                    </span>
+                  </div>
+                  <p
+                    style={{
+                      color: "var(--text-secondary)",
+                      fontSize: "0.9rem",
+                      paddingTop: "4px",
+                    }}
+                  >
+                    {s.text}
+                  </p>
+                </div>
               ))}
+
+              <div
+                style={{
+                  background: "rgba(240,192,64,0.06)",
+                  border: "1px solid rgba(240,192,64,0.2)",
+                  borderRadius: "10px",
+                  padding: "1rem",
+                  marginTop: "1rem",
+                }}
+              >
+                <p
+                  style={{
+                    color: "var(--gold)",
+                    fontWeight: 700,
+                    fontSize: "0.85rem",
+                    marginBottom: "4px",
+                  }}
+                >
+                  ⚠️ Important
+                </p>
+                <p
+                  style={{
+                    color: "var(--text-secondary)",
+                    fontSize: "0.82rem",
+                  }}
+                >
+                  Each invite code can only be used once and expires in 48
+                  hours. Only super admins can generate invite codes. The new
+                  admin will have the same permissions as you except they cannot
+                  generate invite codes or promote other users to super_admin.
+                </p>
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* Notifications log */}
+            {notifications.length > 0 && (
+              <div
+                style={{
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "20px",
+                  padding: "1.5rem",
+                }}
+              >
+                <h3
+                  style={{
+                    fontWeight: 800,
+                    marginBottom: "1rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <Bell size={16} /> Recent Notifications
+                </h3>
+                {notifications.map((n, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      gap: "12px",
+                      alignItems: "flex-start",
+                      padding: "10px 0",
+                      borderBottom: "1px solid var(--border)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "8px",
+                        height: "8px",
+                        borderRadius: "50%",
+                        background: n.color,
+                        flexShrink: 0,
+                        marginTop: "6px",
+                      }}
+                    />
+                    <div>
+                      <p
+                        style={{
+                          fontWeight: 700,
+                          fontSize: "0.85rem",
+                          color: n.color,
+                        }}
+                      >
+                        {n.title}
+                      </p>
+                      <p
+                        style={{
+                          color: "var(--text-secondary)",
+                          fontSize: "0.8rem",
+                        }}
+                      >
+                        {n.msg}
+                      </p>
+                      <p
+                        style={{
+                          color: "var(--text-secondary)",
+                          fontSize: "0.72rem",
+                          marginTop: "2px",
+                        }}
+                      >
+                        {new Date(n.time).toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
