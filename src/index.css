@@ -10,7 +10,7 @@
   --green:          #00ff88;
 }
 
-[data-theme='light'] {
+[data-theme='light'], .light {
   --navy:           #f0f0f8;
   --card:           #ffffff;
   --border:         #d0d0e0;
