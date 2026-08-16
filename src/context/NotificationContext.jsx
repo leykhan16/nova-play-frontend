@@ -1,296 +1,154 @@
-import { createContext, useState, useEffect, useContext } from "react";
-import { connectSocket } from "../services/socket";
-import { AuthContext } from "./AuthContext";
-import toast from "react-hot-toast";
+import { createContext, useState, useEffect, useContext } from 'react'
+import { connectSocket, joinUserRoom } from '../services/socket'
+import { AuthContext } from './AuthContext'
+import toast from 'react-hot-toast'
 
-export const NotificationContext = createContext(null);
+export const NotificationContext = createContext(null)
+
+const ToastCard = ({ emoji, title, message, color }) => (
+  <div style={{
+    background: '#12122a', border: `1px solid ${color}`,
+    borderRadius: '12px', padding: '1rem', maxWidth: '320px',
+    boxShadow: `0 0 20px ${color}33`
+  }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+      <span>{emoji}</span>
+      <span style={{ color, fontWeight: 700, fontSize: '0.9rem' }}>{title}</span>
+    </div>
+    <p style={{ color: '#a0a0c0', fontSize: '0.82rem', margin: 0 }}>{message}</p>
+  </div>
+)
 
 export const NotificationProvider = ({ children }) => {
-  const { user } = useContext(AuthContext);
-  const [notifications, setNotifications] = useState([]);
-  const [unread, setUnread] = useState(0);
+  const { user } = useContext(AuthContext)
+  const [notifications, setNotifications] = useState([])
+  const [unread, setUnread] = useState(0)
+
+  const add = (notif) => {
+    setNotifications(prev => [{ ...notif, id: Date.now(), time: new Date().toISOString() }, ...prev].slice(0, 30))
+    setUnread(prev => prev + 1)
+  }
+
+  const notify = (emoji, title, message, color, duration = 6000) => {
+    add({ emoji, title, message, color })
+    toast.custom(() => <ToastCard emoji={emoji} title={title} message={message} color={color} />, { duration })
+  }
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) return
 
-    const socket = connectSocket();
+    const socket = connectSocket()
 
-    // Join admin room if admin
-    if (["admin", "super_admin"].includes(user.role)) {
-      socket.emit("join_admin_room", { role: user.role });
+    // Join personal room for targeted notifications
+    if (user.id) {
+      joinUserRoom(user.id)
     }
 
-    const addNotification = (notification) => {
-      setNotifications((prev) => [notification, ...prev].slice(0, 20));
-      setUnread((prev) => prev + 1);
-    };
-
-    // ADMIN notifications
-    if (["admin", "super_admin"].includes(user.role)) {
-      socket.on("payment_initiated", (data) => {
-        addNotification({
-          id: Date.now(),
-          type: "payment_initiated",
-          title: "New Payment Request",
-          message: `${data.username} wants to deposit $${data.amount} via ${data.payment_method}`,
-          time: new Date().toISOString(),
-          color: "#f0c040",
-          emoji: "💰",
-        });
-        toast.custom(
-          () => (
-            <div
-              style={{
-                background: "#12122a",
-                border: "1px solid #f0c040",
-                borderRadius: "12px",
-                padding: "1rem",
-                maxWidth: "320px",
-                boxShadow: "0 0 20px rgba(240,192,64,0.2)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  marginBottom: "4px",
-                }}
-              >
-                <span>💰</span>
-                <span style={{ color: "#f0c040", fontWeight: 700 }}>
-                  New Payment Request
-                </span>
-              </div>
-              <p style={{ color: "#a0a0c0", fontSize: "0.85rem" }}>
-                {data.username} wants to deposit ${data.amount} via{" "}
-                {data.payment_method}
-              </p>
-            </div>
-          ),
-          { duration: 6000 },
-        );
-      });
-
-      socket.on("payment_confirming", (data) => {
-        addNotification({
-          id: Date.now(),
-          type: "payment_confirming",
-          title: "Payment Sent!",
-          message: `${data.user} says they've sent $${data.amount} — verify now`,
-          time: new Date().toISOString(),
-          color: "#00ff88",
-          emoji: "✅",
-        });
-        toast.custom(
-          () => (
-            <div
-              style={{
-                background: "#12122a",
-                border: "1px solid #00ff88",
-                borderRadius: "12px",
-                padding: "1rem",
-                maxWidth: "320px",
-                boxShadow: "0 0 20px rgba(0,255,136,0.2)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  marginBottom: "4px",
-                }}
-              >
-                <span>✅</span>
-                <span style={{ color: "#00ff88", fontWeight: 700 }}>
-                  Payment Sent!
-                </span>
-              </div>
-              <p style={{ color: "#a0a0c0", fontSize: "0.85rem" }}>
-                {data.user} says they've sent ${data.amount} — verify now
-              </p>
-            </div>
-          ),
-          { duration: 6000 },
-        );
-      });
-
-      socket.on("big_win", (data) => {
-        addNotification({
-          id: Date.now(),
-          type: "big_win",
-          title: "Big Win Alert!",
-          message: `A player just won $${data.payout?.toLocaleString()} on ${data.prize_tier}`,
-          time: new Date().toISOString(),
-          color: "#c084fc",
-          emoji: "🏆",
-        });
-      });
+    // ── Join admin room ──────────────────────────────────────────────────────
+    if (['admin', 'super_admin'].includes(user.role)) {
+      socket.emit('join_admin_room', { role: user.role })
     }
 
-    // USER notifications
-    if (user) {
-      // Payment approved
-      socket.on(`payment_approved_${user.id}`, (data) => {
-        addNotification({
-          id: Date.now(),
-          type: "payment_approved",
-          title: "Payment Approved!",
-          message: `Your $${data.amount} deposit has been approved. Wallet credited!`,
-          time: new Date().toISOString(),
-          color: "#00ff88",
-          emoji: "🎉",
-        });
-        toast.custom(
-          () => (
-            <div
-              style={{
-                background: "#12122a",
-                border: "1px solid #00ff88",
-                borderRadius: "12px",
-                padding: "1rem",
-                maxWidth: "320px",
-                boxShadow: "0 0 20px rgba(0,255,136,0.3)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  marginBottom: "4px",
-                }}
-              >
-                <span>🎉</span>
-                <span style={{ color: "#00ff88", fontWeight: 700 }}>
-                  Payment Approved!
-                </span>
-              </div>
-              <p style={{ color: "#a0a0c0", fontSize: "0.85rem" }}>
-                Your ${data.amount} deposit has been approved. Your wallet has
-                been credited!
-              </p>
-            </div>
-          ),
-          { duration: 8000 },
-        );
-      });
+    // ── ADMIN events ─────────────────────────────────────────────────────────
+    if (['admin', 'super_admin'].includes(user.role)) {
 
-      // Payment rejected
-      socket.on(`payment_rejected_${user.id}`, (data) => {
-        addNotification({
-          id: Date.now(),
-          type: "payment_rejected",
-          title: "Payment Rejected",
-          message: `Your $${data.amount} payment was rejected. ${data.notes || ""}`,
-          time: new Date().toISOString(),
-          color: "#ff4444",
-          emoji: "❌",
-        });
-        toast.custom(
-          () => (
-            <div
-              style={{
-                background: "#12122a",
-                border: "1px solid #ff4444",
-                borderRadius: "12px",
-                padding: "1rem",
-                maxWidth: "320px",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  marginBottom: "4px",
-                }}
-              >
-                <span>❌</span>
-                <span style={{ color: "#ff4444", fontWeight: 700 }}>
-                  Payment Rejected
-                </span>
-              </div>
-              <p style={{ color: "#a0a0c0", fontSize: "0.85rem" }}>
-                Your ${data.amount} payment was rejected. Please contact
-                support.
-              </p>
-            </div>
-          ),
-          { duration: 8000 },
-        );
-      });
+      socket.on('payment_initiated', (data) => {
+        notify('💰', 'New Payment Request',
+          `${data.username} wants to deposit $${data.amount} via ${data.payment_method}`,
+          '#f0c040', 8000)
+      })
 
-      // Payment details received
-      socket.on(`payment_details_${user.id}`, (data) => {
-        addNotification({
-          id: Date.now(),
-          type: "payment_details",
-          title: "Payment Details Ready",
-          message: `Admin sent payment details for your $${data.amount} deposit`,
-          time: new Date().toISOString(),
-          color: "#00d4ff",
-          emoji: "📋",
-          details: data.details,
-        });
-        toast.custom(
-          () => (
-            <div
-              style={{
-                background: "#12122a",
-                border: "1px solid #00d4ff",
-                borderRadius: "12px",
-                padding: "1rem",
-                maxWidth: "320px",
-                boxShadow: "0 0 20px rgba(0,212,255,0.2)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  marginBottom: "4px",
-                }}
-              >
-                <span>📋</span>
-                <span style={{ color: "#00d4ff", fontWeight: 700 }}>
-                  Payment Details Ready!
-                </span>
-              </div>
-              <p style={{ color: "#a0a0c0", fontSize: "0.85rem" }}>
-                Admin sent payment details for your ${data.amount} deposit.
-                Check your wallet page.
-              </p>
-            </div>
-          ),
-          { duration: 10000 },
-        );
-      });
+      socket.on('payment_confirming', (data) => {
+        notify('✅', 'Payment Sent!',
+          `${data.user} confirmed sending $${data.amount} — verify now`,
+          '#00ff88', 8000)
+      })
+
+      socket.on('gift_card_submitted', (data) => {
+        notify('🎁', 'Gift Card Submitted',
+          `${data.username} submitted a ${data.card_type || 'gift'} card — $${data.amount}`,
+          '#c084fc', 8000)
+      })
+
+      socket.on('prize_delivery_submitted', (data) => {
+        notify('🏆', 'Prize Delivery Request',
+          `A player submitted a prize delivery form`,
+          '#c084fc', 10000)
+      })
+
+      socket.on('ticket_updated', (data) => {
+        notify('🎫', 'Support Ticket',
+          `A user replied to ticket ${data.ticket_id?.slice(0, 8)}...`,
+          '#00d4ff', 6000)
+      })
+
+      socket.on('new_ticket', (data) => {
+        notify('🎫', 'New Support Ticket',
+          `${data.username}: ${data.subject}`,
+          '#f0c040', 8000)
+      })
+
+      socket.on('big_win', (data) => {
+        notify('🎰', 'Big Win Alert!',
+          `A player won $${Number(data.payout || 0).toLocaleString()} on ${data.prize_tier}`,
+          '#c084fc', 8000)
+      })
     }
 
+    // ── USER events ───────────────────────────────────────────────────────────
+    socket.on(`payment_approved_${user.id}`, (data) => {
+      notify('🎉', 'Payment Approved!',
+        `Your $${data.amount} deposit has been approved and wallet credited!`,
+        '#00ff88', 10000)
+    })
+
+    socket.on(`payment_rejected_${user.id}`, (data) => {
+      notify('❌', 'Payment Rejected',
+        `Your $${data.amount} payment was rejected. ${data.notes || 'Contact support.'}`,
+        '#ff4444', 10000)
+    })
+
+    socket.on(`payment_details_${user.id}`, (data) => {
+      notify('📋', 'Payment Details Ready!',
+        `Admin sent payment details for your $${data.amount} deposit. Check your wallet.`,
+        '#00d4ff', 12000)
+    })
+
+    socket.on(`ticket_reply_${user.id}`, (data) => {
+      notify('💬', 'Support Reply',
+        `Admin replied to your support ticket`,
+        '#00d4ff', 8000)
+    })
+
+    socket.on(`ticket_status_${user.id}`, (data) => {
+      notify('🎫', 'Ticket Updated',
+        `Your support ticket status changed to ${data.status}`,
+        '#f0c040', 6000)
+    })
+
+    // ── Cleanup ───────────────────────────────────────────────────────────────
     return () => {
-      socket.off("payment_initiated");
-      socket.off("payment_confirming");
-      socket.off("big_win");
-      socket.off(`payment_approved_${user?.id}`);
-      socket.off(`payment_rejected_${user?.id}`);
-      socket.off(`payment_details_${user?.id}`);
-    };
-  }, [user]);
+      socket.off('payment_initiated')
+      socket.off('payment_confirming')
+      socket.off('gift_card_submitted')
+      socket.off('prize_delivery_submitted')
+      socket.off('ticket_updated')
+      socket.off('new_ticket')
+      socket.off('big_win')
+      socket.off(`payment_approved_${user.id}`)
+      socket.off(`payment_rejected_${user.id}`)
+      socket.off(`payment_details_${user.id}`)
+      socket.off(`ticket_reply_${user.id}`)
+      socket.off(`ticket_status_${user.id}`)
+    }
+  }, [user])
 
-  const markAllRead = () => setUnread(0);
-  const clearAll = () => {
-    setNotifications([]);
-    setUnread(0);
-  };
+  const markAllRead = () => setUnread(0)
+  const clearAll   = () => { setNotifications([]); setUnread(0) }
 
   return (
-    <NotificationContext.Provider
-      value={{ notifications, unread, markAllRead, clearAll }}
-    >
+    <NotificationContext.Provider value={{ notifications, unread, markAllRead, clearAll }}>
       {children}
     </NotificationContext.Provider>
-  );
-};
+  )
+}

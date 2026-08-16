@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useContext } from "react";
+import { useState, useRef, useContext } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { gamesAPI, walletAPI } from "../../services/api";
 import { AuthContext } from "../../context/AuthContext";
@@ -24,19 +24,6 @@ export default function CrashGame() {
   const intervalRef = useRef(null);
   const startTimeRef = useRef(null);
   const pointsRef = useRef([]);
-
-  useEffect(() => {
-    walletAPI
-      .getWallet()
-      .then((r) => setBalance(r.data.data.balance))
-      .catch(() => {});
-    gamesAPI
-      .getHistory()
-      .then((r) => setHistory(r.data.data.slice(0, 10)))
-      .catch(() => {});
-    startNewRound();
-    return () => clearInterval(intervalRef.current);
-  }, []);
 
   const startNewRound = () => {
     setPhase("waiting");
@@ -301,18 +288,34 @@ export default function CrashGame() {
                         {multiplier.toFixed(2)}x
                       </div>
                       {phase === "crashed" && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          style={{
-                            color: "#ff4444",
-                            fontWeight: 700,
-                            marginTop: "0.5rem",
-                            fontSize: "1.2rem",
-                          }}
-                        >
-                          CRASHED!
-                        </motion.div>
+                        <>
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            style={{
+                              color: "#ff4444",
+                              fontWeight: 700,
+                              marginTop: "0.5rem",
+                              fontSize: "1.2rem",
+                            }}
+                          >
+                            CRASHED!
+                          </motion.div>
+                          {crashPoint !== null && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              style={{
+                                color: "var(--text-secondary)",
+                                marginTop: "0.35rem",
+                                fontSize: "0.9rem",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Crash at {crashPoint.toFixed(2)}x
+                            </motion.div>
+                          )}
+                        </>
                       )}
                     </motion.div>
                   )}
