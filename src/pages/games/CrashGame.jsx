@@ -18,6 +18,7 @@ export default function CrashGame() {
   const [betAmount, setBetAmount] = useState("");
   const [activeBet, setActiveBet] = useState(null);
   const [balance, setBalance] = useState(0);
+  const [demoMode, setDemoMode] = useState(false);
   const [history, setHistory] = useState([]);
   const [countdown, setCountdown] = useState(5);
   const canvasRef = useRef(null);
@@ -147,26 +148,26 @@ export default function CrashGame() {
       toast.error("Wait for the next round");
       return;
     }
-    if (parseFloat(betAmount) > balance) {
-      toast.error("Insufficient balance");
-      return;
-    }
-    setActiveBet({ amount: parseFloat(betAmount) });
-    setBalance((prev) => prev - parseFloat(betAmount));
-    toast.success(`Bet of $${betAmount} placed!`);
+    const isDemo = parseFloat(betAmount) > balance || balance <= 0
+    setActiveBet({ amount: parseFloat(betAmount), demo: isDemo });
+    setDemoMode(isDemo);
+    if (!isDemo) setBalance((prev) => prev - parseFloat(betAmount));
+    toast.success(isDemo ? `🎮 Demo bet of ${betAmount} placed!` : `Bet of ${betAmount} placed!`);
     setBetAmount("");
   };
 
   const handleCashOut = () => {
     if (!activeBet || phase !== "running") return;
     const payout = (activeBet.amount * multiplier).toFixed(2);
-    setBalance((prev) => prev + parseFloat(payout));
-    toast.success(`🎉 Cashed out at ${multiplier}x — Won $${payout}!`);
-    setActiveBet(null);
-    walletAPI
-      .getWallet()
-      .then((r) => setBalance(r.data.data.balance))
-      .catch(() => {});
+    if (!activeBet.demo) {
+      setBalance((prev) => prev + parseFloat(payout))
+      walletAPI.getWallet().then((r) => setBalance(r.data.data.balance)).catch(() => {})
+    }
+    toast.success(activeBet.demo
+      ? `🎮 Demo cashout at ${multiplier}x — Would have won ${payout}!`
+      : `🎉 Cashed out at ${multiplier}x — Won ${payout}!`
+    )
+    setActiveBet(null)
   };
 
   const mColor = () => {
