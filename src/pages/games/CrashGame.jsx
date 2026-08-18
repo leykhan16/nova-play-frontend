@@ -1,4 +1,4 @@
-import { useState, useRef, useContext } from "react";
+import { useState, useRef, useContext, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { gamesAPI, walletAPI } from "../../services/api";
 import { AuthContext } from "../../context/AuthContext";
@@ -22,6 +22,16 @@ export default function CrashGame() {
   const [history, setHistory] = useState([]);
   const [countdown, setCountdown] = useState(5);
   const canvasRef = useRef(null);
+  const hasStarted = useRef(false);
+
+  useEffect(() => {
+    if (!hasStarted.current) {
+      hasStarted.current = true
+      walletAPI.getWallet().then(r => setBalance(r.data.data.balance)).catch(() => {})
+      startNewRound()
+    }
+    return () => clearInterval(intervalRef.current)
+  }, [])
   const intervalRef = useRef(null);
   const startTimeRef = useRef(null);
   const pointsRef = useRef([]);
