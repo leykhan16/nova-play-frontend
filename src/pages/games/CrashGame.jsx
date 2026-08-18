@@ -183,11 +183,12 @@ export default function CrashGame() {
     const payout = (activeBet.amount * multiplier).toFixed(2);
     if (!activeBet.demo) {
       try {
-        await gamesAPI.endGame(activeBet.gameId, {
-          crash_point: parseFloat(multiplier),
-          status: 'crashed'
+        const res = await walletAPI.crashCashout({
+          amount: activeBet.amount,
+          multiplier: parseFloat(multiplier),
+          currency: 'USD'
         })
-        walletAPI.getWallet().then((r) => setBalance(r.data.data.balance)).catch(() => {})
+        setBalance(res.data.data.balance)
         toast.success(`🎉 Cashed out at ${multiplier}x — Won ${payout}!`)
       } catch (err) {
         toast.error('Cashout failed')
