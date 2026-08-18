@@ -165,13 +165,7 @@ export default function CrashGame() {
     if (!isDemo) {
       try {
         // Create a game first then place bet
-        const gameRes = await gamesAPI.createGame()
-        const gameId = gameRes.data.data.id
-        await gamesAPI.placeBet(gameId, {
-          amount: parseFloat(betAmount),
-          currency: 'USD'
-        })
-        setActiveBet({ amount: parseFloat(betAmount), demo: false, gameId })
+        await walletAPI.crashBet({ amount: parseFloat(betAmount), currency: 'USD' })
         setBalance((prev) => prev - parseFloat(betAmount))
       } catch (err) {
         toast.error(err?.response?.data?.message || 'Could not place bet')
