@@ -27,7 +27,10 @@ export default function CrashGame() {
   useEffect(() => {
     if (!hasStarted.current) {
       hasStarted.current = true
-      walletAPI.getWallet().then(r => setBalance(r.data.data.balance)).catch(() => {})
+      const token = localStorage.getItem('accessToken')
+      if (token) {
+        walletAPI.getWallet().then(r => setBalance(r.data.data.balance)).catch(() => {})
+      }
       startNewRound()
     }
     return () => clearInterval(intervalRef.current)
