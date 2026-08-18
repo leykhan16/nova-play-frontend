@@ -64,6 +64,8 @@ export const walletAPI = {
   getWallet: () => api.get("/wallet"),
   getTransactions: () => api.get("/wallet/transactions"),
   withdraw: (data) => api.post("/wallet/withdraw", data),
+  crashBet: (data) => api.post("/wallet/crash-bet", data),
+  crashCashout: (data) => api.post("/wallet/crash-cashout", data),
 };
 
 // Payments

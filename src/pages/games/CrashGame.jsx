@@ -152,7 +152,7 @@ export default function CrashGame() {
     ctx.stroke();
   };
 
-  const handlePlaceBet = () => {
+  const handlePlaceBet = async () => {
     if (!betAmount || parseFloat(betAmount) <= 0) {
       toast.error("Enter a valid bet amount");
       return;
@@ -162,24 +162,46 @@ export default function CrashGame() {
       return;
     }
     const isDemo = parseFloat(betAmount) > balance || balance <= 0
+    if (!isDemo) {
+      try {
+        // Create a game first then place bet
+        const gameRes = await gamesAPI.createGame()
+        const gameId = gameRes.data.data.id
+        await gamesAPI.placeBet(gameId, {
+          amount: parseFloat(betAmount),
+          currency: 'USD'
+        })
+        setActiveBet({ amount: parseFloat(betAmount), demo: false, gameId })
+        setBalance((prev) => prev - parseFloat(betAmount))
+      } catch (err) {
+        toast.error(err?.response?.data?.message || 'Could not place bet')
+        return
+      }
+    }
     setActiveBet({ amount: parseFloat(betAmount), demo: isDemo });
     setDemoMode(isDemo);
-    if (!isDemo) setBalance((prev) => prev - parseFloat(betAmount));
-    toast.success(isDemo ? `🎮 Demo bet of ${betAmount} placed!` : `Bet of ${betAmount} placed!`);
+    toast.success(isDemo ? `🎮 Demo bet of ${betAmount} placed!` : `Bet placed — ${betAmount}`);
     setBetAmount("");
   };
 
-  const handleCashOut = () => {
+  const handleCashOut = async () => {
     if (!activeBet || phase !== "running") return;
     const payout = (activeBet.amount * multiplier).toFixed(2);
     if (!activeBet.demo) {
-      setBalance((prev) => prev + parseFloat(payout))
-      walletAPI.getWallet().then((r) => setBalance(r.data.data.balance)).catch(() => {})
+      try {
+        await gamesAPI.endGame(activeBet.gameId, {
+          crash_point: parseFloat(multiplier),
+          status: 'crashed'
+        })
+        walletAPI.getWallet().then((r) => setBalance(r.data.data.balance)).catch(() => {})
+        toast.success(`🎉 Cashed out at ${multiplier}x — Won ${payout}!`)
+      } catch (err) {
+        toast.error('Cashout failed')
+        return
+      }
+    } else {
+      toast.success(`🎮 Demo cashout at ${multiplier}x — Would have won ${payout}!`)
     }
-    toast.success(activeBet.demo
-      ? `🎮 Demo cashout at ${multiplier}x — Would have won ${payout}!`
-      : `🎉 Cashed out at ${multiplier}x — Won ${payout}!`
-    )
     setActiveBet(null)
   };
 
